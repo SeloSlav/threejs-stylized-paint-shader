@@ -97,6 +97,7 @@ export async function buildCc0ManScene(context: SceneBuildContext): Promise<void
         surfaceMapStrength: surfaceMap ? 1 : 0,
         surfaceAlphaTest: sourceMaterial.alphaTest ?? 0,
         sourceAlbedoWeight: texturelessSurface ? TEXTURELESS_UNDERPAINT_WEIGHT : 1,
+        nativeMaterial: sourceMaterial.clone(),
         roughness: Math.max(0.48, sourceMaterial.roughness ?? 0.72),
         metalness: Math.min(0.08, sourceMaterial.metalness ?? 0),
         clearcoat: 0.08,
@@ -117,12 +118,14 @@ export async function buildCc0ManScene(context: SceneBuildContext): Promise<void
   for (const geometry of sourceGeometries) geometry.dispose();
   context.root.add(model);
 
-  const idleClip = gltf.animations.find((clip) => clip.name.toLowerCase().includes('idle'));
-  if (idleClip) {
+  const walkClip = gltf.animations.find((clip) =>
+    clip.name.toLowerCase().endsWith('man_walk'),
+  ) ?? gltf.animations.find((clip) => clip.name.toLowerCase().includes('walk'));
+  if (walkClip) {
     const mixer = new THREE.AnimationMixer(model);
-    const idle = mixer.clipAction(idleClip, model);
-    idle.setLoop(THREE.LoopRepeat, Number.POSITIVE_INFINITY);
-    idle.play();
+    const walk = mixer.clipAction(walkClip, model);
+    walk.setLoop(THREE.LoopRepeat, Number.POSITIVE_INFINITY);
+    walk.play();
     mixer.update(0);
     context.onFrame((deltaSeconds) => mixer.update(deltaSeconds));
   }
@@ -132,7 +135,7 @@ export async function buildCc0ManScene(context: SceneBuildContext): Promise<void
     source: 'Quaternius Animated Men Pack (CC0 1.0)',
     targetHeight: TARGET_HEIGHT,
     materialLayers: materialLayerCount,
-    animation: idleClip?.name ?? null,
+    animation: walkClip?.name ?? null,
     projectionScaleRange: [
       Math.min(...projectionScales),
       Math.max(...projectionScales),

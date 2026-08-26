@@ -149,6 +149,67 @@ button {
   box-shadow: 0 16px 42px rgb(0 0 0 / 24%), 0 0 0 1px rgb(255 98 74 / 28%);
 }
 
+.shader-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid rgb(255 255 255 / 18%);
+  border-radius: 4px;
+  background: rgb(8 9 13 / 76%);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 20%);
+  color: rgb(255 255 255 / 62%);
+  cursor: pointer;
+  font-size: 10px;
+  backdrop-filter: blur(16px);
+  transition: border-color 160ms ease, background 160ms ease, color 160ms ease;
+}
+
+.shader-toggle span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.shader-toggle i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #6d7079;
+  box-shadow: 0 0 0 3px rgb(255 255 255 / 5%);
+  transition: background 160ms ease, box-shadow 160ms ease;
+}
+
+.shader-toggle strong {
+  color: rgb(255 255 255 / 42%);
+  font-family: 'DM Mono', Consolas, monospace;
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+}
+
+.shader-toggle:hover {
+  border-color: rgb(255 255 255 / 32%);
+  background: rgb(18 19 25 / 86%);
+  color: white;
+}
+
+.shader-toggle.is-active {
+  border-color: rgb(255 98 74 / 55%);
+  background: linear-gradient(100deg, rgb(255 98 74 / 14%), rgb(8 9 13 / 80%));
+  color: #fff5ec;
+}
+
+.shader-toggle.is-active i {
+  background: var(--accent);
+  box-shadow: 0 0 0 3px rgb(255 98 74 / 16%), 0 0 14px rgb(255 98 74 / 42%);
+}
+
+.shader-toggle.is-active strong {
+  color: var(--accent-warm);
+}
+
 .brand h1,
 .panel-header h2 {
   margin: 0;
@@ -432,27 +493,6 @@ button {
   font-size: 20px;
 }
 
-.icon-button {
-  display: grid;
-  place-items: center;
-  width: 33px;
-  height: 33px;
-  border: 1px solid var(--line);
-  border-radius: 50%;
-  background: transparent;
-  color: rgb(255 255 255 / 58%);
-  cursor: pointer;
-  font-size: 18px;
-  line-height: 1;
-  transition: border-color 160ms ease, color 160ms ease, transform 160ms ease;
-}
-
-.icon-button:hover {
-  border-color: rgb(255 255 255 / 34%);
-  color: white;
-  transform: rotate(8deg);
-}
-
 .panel-scroll {
   position: relative;
   z-index: 1;
@@ -567,7 +607,7 @@ details[open] summary span::before {
 }
 
 .swatch.noir {
-  background: linear-gradient(105deg, #05040a 0 38%, #2b263c 38% 56%, #c51f17 56% 78%, #ff7a2a 78%);
+  background: linear-gradient(105deg, #05040a 0 34%, #2b263c 34% 54%, #dc1e2b 54% 76%, #ffe3bd 76%);
 }
 
 .swatch.ultraviolet {
@@ -648,6 +688,45 @@ details[open] summary span::before {
   border: 2px solid #0c0d12;
   border-radius: 50%;
   background: #fff3e8;
+}
+
+.outline-color-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 4px 0 10px;
+}
+
+.color-row {
+  display: grid;
+  grid-template-columns: 1fr 34px;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 7px 8px;
+  border: 1px solid rgb(255 255 255 / 9%);
+  border-radius: 3px;
+  color: rgb(255 255 255 / 65%);
+  font-size: 10px;
+}
+
+.color-row input[type='color'] {
+  width: 34px;
+  height: 24px;
+  padding: 2px;
+  border: 1px solid rgb(255 255 255 / 18%);
+  border-radius: 3px;
+  background: #0c0d12;
+  cursor: pointer;
+}
+
+.color-row input[type='color']::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.color-row input[type='color']::-webkit-color-swatch {
+  border: 0;
+  border-radius: 2px;
 }
 
 .texture-card {
@@ -843,41 +922,6 @@ select {
   background: #ff816c;
 }
 
-.panel-reopen {
-  position: fixed;
-  z-index: 20;
-  top: 26px;
-  right: 24px;
-  padding: 10px 14px;
-  border: 1px solid rgb(255 255 255 / 18%);
-  border-radius: 99px;
-  background: rgb(9 10 15 / 70%);
-  color: white;
-  cursor: pointer;
-  font-size: 10px;
-  opacity: 0;
-  pointer-events: none;
-  transform: translateY(-8px);
-  backdrop-filter: blur(14px);
-  transition: opacity 220ms ease, transform 220ms ease;
-}
-
-.panel-collapsed .app-shell {
-  grid-template-columns: minmax(0, 1fr) 0;
-}
-
-.panel-collapsed .control-panel {
-  opacity: 0;
-  pointer-events: none;
-  transform: translateX(100%);
-}
-
-.panel-collapsed .panel-reopen {
-  opacity: 1;
-  pointer-events: auto;
-  transform: translateY(0);
-}
-
 .loading-card {
   position: absolute;
   z-index: 30;
@@ -931,10 +975,6 @@ select {
     top: 0;
     right: 0;
     width: var(--panel-width);
-  }
-
-  .panel-collapsed .control-panel {
-    transform: translateX(100%);
   }
 
   .runtime-pill {

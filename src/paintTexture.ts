@@ -62,6 +62,9 @@ interface Stroke {
   readonly edgeFrequency: number;
   readonly height: number;
   readonly opacity: number;
+  /** Broad per-mark tilt, matching the reference's randomized stroke normals. */
+  readonly normalX: number;
+  readonly normalY: number;
   readonly noiseSeed: number;
 }
 
@@ -102,23 +105,47 @@ export function createPaintTexture(
   const height = new Float32Array(texelCount);
   const broadMask = new Float32Array(texelCount);
   const detailMask = new Float32Array(texelCount);
+  const strokeNormalX = new Float32Array(texelCount);
+  const strokeNormalY = new Float32Array(texelCount);
+  const strokeNormalDeposit = new Float32Array(texelCount);
 
   addPeriodicCanvasGrain(height, size, random, seedHash);
 
   for (let index = 0; index < broadStrokeCount; index += 1) {
     const stroke = createBroadStroke(size, random, bristleDensity, index, seedHash);
-    stampStroke(height, broadMask, size, stroke, false);
+    stampStroke(
+      height,
+      broadMask,
+      strokeNormalX,
+      strokeNormalY,
+      strokeNormalDeposit,
+      size,
+      stroke,
+      false,
+    );
   }
 
   for (let index = 0; index < detailStrokeCount; index += 1) {
     const stroke = createDetailStroke(size, random, bristleDensity, index, seedHash);
-    stampStroke(height, detailMask, size, stroke, true);
+    stampStroke(
+      height,
+      detailMask,
+      strokeNormalX,
+      strokeNormalY,
+      strokeNormalDeposit,
+      size,
+      stroke,
+      true,
+    );
   }
 
   const data = packChannels(
     height,
     broadMask,
     detailMask,
+    strokeNormalX,
+    strokeNormalY,
+    strokeNormalDeposit,
     size,
     seedHash,
     normalStrength,
@@ -181,6 +208,8 @@ function createBroadStroke(
   ];
   const family = directionFamily[Math.floor(random() * directionFamily.length)] ?? 0;
   const angle = family + (random() - 0.5) * 0.42;
+  const normalAngle = random() * TAU;
+  const normalTilt = 0.38 + random() * 0.44;
 
   return {
     centerX: random() * size,
@@ -195,6 +224,8 @@ function createBroadStroke(
     edgeFrequency: 0.035 + random() * 0.09,
     height: 0.34 + random() * 0.46,
     opacity: 0.55 + random() * 0.43,
+    normalX: Math.cos(normalAngle) * normalTilt,
+    normalY: Math.sin(normalAngle) * normalTilt,
     noiseSeed: mixUint(seed, index + 0x2e51),
   };
 }
@@ -209,6 +240,8 @@ function createDetailStroke(
   const angle = random() < 0.72
     ? (random() < 0.55 ? 0 : Math.PI * 0.5) + (random() - 0.5) * 0.6
     : random() * Math.PI;
+  const bristleNormalAngle = angle + Math.PI * 0.5;
+  const bristleTilt = 0.08 + random() * 0.16;
 
   return {
     centerX: random() * size,
@@ -223,6 +256,8 @@ function createDetailStroke(
     edgeFrequency: 0.08 + random() * 0.22,
     height: 0.12 + random() * 0.29,
     opacity: 0.52 + random() * 0.48,
+    normalX: Math.cos(bristleNormalAngle) * bristleTilt,
+    normalY: Math.sin(bristleNormalAngle) * bristleTilt,
     noiseSeed: mixUint(seed ^ 0xa511_e9b3, index + 0x68bc),
   };
 }
@@ -230,6 +265,9 @@ function createDetailStroke(
 function stampStroke(
   height: Float32Array,
   mask: Float32Array,
+  normalX: Float32Array,
+  normalY: Float32Array,
+  normalDeposit: Float32Array,
   size: number,
   stroke: Stroke,
   isDetail: boolean,
@@ -309,6 +347,17 @@ function stampStroke(
         * deposited
         * (0.35 + 0.65 * bristleRidge)
         * (isDetail ? 0.72 : 1);
+
+      // The source material's most important texture feature is not simply a
+      // height-derived normal: every deposited mark owns a strongly randomized
+      // tilt. Later strokes partially cover earlier ones, while the narrow
+      // detail marks add a weaker across-bristle direction on top.
+      const normalBlend = saturate(
+        deposited * stroke.opacity * (isDetail ? 0.18 : 0.76),
+      );
+      normalX[texel] = mix(normalX[texel] ?? 0, stroke.normalX, normalBlend);
+      normalY[texel] = mix(normalY[texel] ?? 0, stroke.normalY, normalBlend);
+      normalDeposit[texel] = 1 - (1 - (normalDeposit[texel] ?? 0)) * (1 - normalBlend);
     }
   }
 }
@@ -358,6 +407,9 @@ function packChannels(
   height: Float32Array,
   broadMask: Float32Array,
   detailMask: Float32Array,
+  strokeNormalX: Float32Array,
+  strokeNormalY: Float32Array,
+  strokeNormalDeposit: Float32Array,
   size: number,
   seed: number,
   normalStrength: number,
@@ -392,9 +444,19 @@ function packChannels(
         - 2 * height[yMinus * size + x]
         - height[yMinus * size + xPlus]
       ) * 0.125 * normalStrength;
-      const inverseLength = 1 / Math.hypot(gradientX, gradientY, 1);
-      const normalX = -gradientX * inverseLength;
-      const normalY = -gradientY * inverseLength;
+      const strokeNormalWeight = smoothstep(
+        0.04,
+        0.72,
+        strokeNormalDeposit[center] ?? 0,
+      );
+      const strokeNormalScale = normalStrength / 3.8;
+      const combinedNormalX = -gradientX * 0.48
+        + (strokeNormalX[center] ?? 0) * strokeNormalWeight * strokeNormalScale;
+      const combinedNormalY = -gradientY * 0.48
+        + (strokeNormalY[center] ?? 0) * strokeNormalWeight * strokeNormalScale;
+      const inverseLength = 1 / Math.hypot(combinedNormalX, combinedNormalY, 1);
+      const normalX = combinedNormalX * inverseLength;
+      const normalY = combinedNormalY * inverseLength;
 
       const lowFrequency = periodicFbm(
         (x + 0.5) / size,

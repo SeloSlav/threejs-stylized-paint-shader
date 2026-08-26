@@ -253,8 +253,11 @@ function addSurfacePart(
   material: SurfaceSpec,
   options: Omit<ScenePaintedObjectOptions, 'palette' | 'surfaceColor' | 'surfaceMap' | 'surfaceMapStrength' | 'sourceAlbedoWeight' | 'roughness' | 'metalness' | 'clearcoat'>,
 ) {
+  const belongsToResidence = parent !== context.root;
   return context.addPaintedObject({
     ...options,
+    screenOutline: options.screenOutline ?? belongsToResidence,
+    outlineGroup: options.outlineGroup ?? (belongsToResidence ? 'tier-one-residence' : undefined),
     palette: material.palette,
     surfaceColor: material.color,
     surfaceMap: material.map,

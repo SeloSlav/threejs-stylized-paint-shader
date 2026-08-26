@@ -30,6 +30,11 @@ corepack pnpm run build
 Use the **Active scene** dropdown beneath the Paint/Lab mark to switch between:
 
 - Material study — the original primitive shader laboratory.
+- Texture study — a ground-only comparison using the approved meadow, dense
+  grass, dry grass, and under-forest leaf-litter maps from
+  `medieval-road-system`. The four albedo, normal, roughness, and AO identities
+  are blended before the painterly response, with Verdant as the authored
+  starting look.
 - Tier 1 residence — the burgage cottage integration from
   `medieval-road-system`.
 - SeedThree beech — one deterministic American beech (*Fagus grandifolia*)
@@ -49,12 +54,16 @@ runtime entries.
 
 ## Ported material graph
 
-The visible material stays local to each object; there is no painterly
-post-process pass.
+The visible paint and lighting graph stays local to each object. The simple
+material-study forms keep their original painterly outline shells; imported
+and highly tessellated assets use a bounded silhouette-mask equivalent so
+outline shape is independent of mesh density and triangle size.
 
 - One deterministic RGBA texture owns the complete paint field:
   - **RG** — tangent-space brush normal X/Y, decoded from `[0, 1]` to
-    `[-1, 1]` with the tutorial's fixed `Z = 0.95` approximation.
+    `[-1, 1]` with the tutorial's fixed `Z = 0.95` approximation. Every broad
+    deposited mark carries its own strongly randomized tilt; a weaker
+    height-derived bristle normal is layered over it.
   - **B** — broad grayscale strokes for the two-color diffuse gradient and
     bump-offset/parallax height.
   - **A** — smaller high-contrast strokes for bristle tips and band breakup.
@@ -62,21 +71,33 @@ post-process pass.
     detail noise as a silhouette by itself.
 - The reset lighting thresholds reproduce the tutorial's `0 / .25 / 1`
   sun bands (`N·L` cuts at approximately `-.7` and `.3`).
-- A broad half-vector mask feeds the tutorial's quantized, colored fake
-  reflection plates. The packed field only disturbs their boundaries, so the
-  highlight stays contiguous instead of becoming metallic noise.
+- The reflected view vector is compared directly with the light, matching the
+  tutorial's fake-reflection mechanism. A stylized expansion turns that signal
+  into broad, quantized coral/orange paint planes; rotated RG normals, B-load,
+  and A-bristles break the plane into authored marks. Near-white impasto is a
+  smaller brush-loaded peak, not the entire light lobe.
+- The matte diffuse palette owns the main color separation. Setting Oil
+  reflection and Native sheen to zero therefore leaves colorful coral, magenta,
+  and navy paint masses instead of collapsing the object to black; oil is an
+  optional glaze rather than a metalness substitute.
 - Smooth normals are stored in a dedicated geometry attribute. They drive
-  curvature detection, silhouette dilation, and stable edge handling without
-  losing hard surface normals.
+  curvature detection and stable edge handling without losing hard surface
+  normals.
 - The solid pass uses a shared triplanar B/A edge field and derivative
   curvature to keep shallow flat faces while dry gaps remove paint from curved
   silhouettes. A low-frequency comb sets the reach and a finer comb frays the
   tips; both remain clamped to a shallow edge band.
-- Every featured object has a base-connected, tapered back-face paint rim plus
-  two asymmetric contour loops. Their vertices retain the source surface depth
-  and dilate only in projected X/Y, so the model remains the shared inner edge
-  while width variation and directional jitter change only the outward reach.
-  Object-locked brush coverage then breaks the anchored bands into dry arcs.
+- The material-study forms retain the original attached rim and two asymmetric
+  shell loops. Complex assets contribute their unchanged visible silhouette to
+  three bounded mask roles with the same colors and breakup. Their mask stores
+  object-space triplanar brush load and carries it into nearby outline pixels,
+  preserving the hand-drawn character without inflating model triangles.
+- Outline reach follows the perspective scale of the model, so zooming does
+  not make the stroke proportionally thinner. Occluded mask edges contribute
+  zero alpha and cannot show through foreground surfaces.
+- Complex multi-part assets can contribute a shared outline group. The mask
+  then follows the visible union of the complete asset instead of losing its
+  silhouette when unoutlined trim occludes a selected wall or roof panel.
 - The custom depth pass overrides opacity with the same triplanar B/A carrier
   and comb used by the edges, but with an independent phase, scale, cutoff, and
   erosion amount. Squared light-facing response makes the breakup pronounced
@@ -84,8 +105,18 @@ post-process pass.
 - Curved and rounded objects triplanar-project the macro B/A field to avoid
   sphere pole pinching. Fine tangent-space relief retains the tutorial's UV
   path.
-- Three.js ACES tone mapping is the single output transform. No composer,
-  bloom, screen-space paint filter, or second tone-map is installed.
+- Deforming meshes evaluate procedural paint, rim breakup, and shadow breakup
+  from their undeformed surface coordinates. Those fields interpolate like
+  permanent texture coordinates and bend with the skin instead of behaving as
+  a rigid projector volume during animation.
+- Three.js ACES tone mapping is the single output transform. When a complex
+  asset is active, the composer owns only its rim/outline masks and output
+  conversion; there is no bloom, screen-space paint filter, or second tone-map.
+- The Texture study resolves four direct texture-backed terrain identities in
+  world space. Three grass layers use decorrelated scales and rotations; the
+  forest-litter layer uses a smaller world scale. One deterministic broad field
+  owns the albedo, tangent normal, roughness, and AO blend weights before the
+  painterly bands and brush relief are applied.
 
 ## Controls and diagnostics
 
@@ -97,10 +128,15 @@ provides:
 - High Key, Sunset Noir, Ultraviolet, Earthy, Open Sky, and Verdant
   art-direction presets.
 - Detail, Hero, and Wide fixed camera bookmarks (`1`, `2`, `3`).
+- True-zero rim/outline widths plus independent live color pickers for the
+  primary and secondary painterly loops.
 - Final, packed-normal, broad-stroke, detail-stroke, toon-band, oil-only,
-  erosion-only, shadow-mask, color-coded edge-layer, and source-albedo views.
-- Deterministic field shuffle/reset, time freeze (`P`), panel toggle (`H`),
-  quality tiers, PNG capture, and versioned JSON settings export.
+  impasto-highlight, erosion-only, shadow-mask, color-coded edge-layer, and
+  source-albedo views.
+- Texture weights view, color-coding the four deterministic terrain identities
+  in the Texture study scene.
+- Deterministic field shuffle/reset, time freeze (`P`), quality tiers, PNG
+  capture, and versioned JSON settings export.
 - In the Material study scene, click any painted object to attach a transform
   gizmo. Drag its handles directly, use `W` / `E` / `R` for move / rotate /
   scale, and press `Esc` or click empty space to close it.
@@ -156,6 +192,8 @@ The target design frame preserves these observable invariants:
   simultaneously readable on the hero sphere.
 - The warm reflection field ends in dragged, irregular stroke edges rather
   than a smooth PBR highlight.
+- With Oil reflection and Native sheen at zero, the hero sphere still carries
+  bright matte pigment islands and reads as paint rather than dark metal.
 - Near-black masses survive without bloom or presentation effects.
 - Strokes remain attached under object and camera motion; curved macro fields
   do not show a visible UV pole.
@@ -167,7 +205,8 @@ The target design frame preserves these observable invariants:
   of translating away from the silhouette or becoming a uniform wire.
 - Cast-shadow footprints retain solid contact cores but break into stable
   object-locked brush marks toward curved caster silhouettes.
-- The unfiltered final is already the no-post baseline.
+- The material image is unfiltered; only its object-space-authored silhouette
+  fields are extended into the bounded outline composite.
 - The material reads at the Detail, Hero, and Wide bookmarks and at mobile
   widths.
 
@@ -179,7 +218,7 @@ the visible reflection is owned by a palette-tinted painterly plate rather
 than a stacked GGX/clearcoat response. The optional Native sheen control can
 blend a small amount of the physical response back in. It does not add
 screen-space AO because that would violate the source project's
-material-local/no-post constraint. The rest of the material stages are
+material-local paint constraint. The rest of the material stages are
 exposed and independently inspectable.
 
 ## License

@@ -1,9 +1,68 @@
 # Visual validation record
 
+## Paint-first lighting revision gate
+
+The painterly-light revision is accepted for the material-study target. The
+previous Noir palette left almost all visible color in the oil overlay, which
+made Oil reflection behave like a metalness switch. The base diffuse palette
+now owns coral, magenta, navy, and black pigment masses; the oil path is a
+lower-strength optional glaze with isolated warm-white impasto peaks.
+
+- Reference mechanism retained: each broad texture mark owns a randomized RG
+  normal tilt, fine relief is layered over it, and the rotated reflection field
+  compares the reflected view vector directly against the light direction.
+- Fixed inputs: seed `73021` / `ED5884FA`, frozen `0.0 s`, High quality,
+  `1440 × 900` viewport, and the named Detail, Hero, and Wide bookmarks.
+- Final Hero passed with a broad coral/orange painted-light plane, black shadow
+  mass, visible internal pigment breakup, and a small white bristle-loaded peak.
+- Oil reflection `0` plus Native sheen `0` passed at Hero and Detail: the
+  spheres retained matte coral/magenta/navy brush masses and did not collapse
+  to black or reveal a hidden smooth specular contribution.
+- `Impasto highlight` diagnostic passed and isolates the deposited B/A carrier
+  from the brightest brush-loaded peak. Packed normal, Diffuse strokes, Detail
+  strokes, Toon bands, and Oil reflection remain available for field isolation.
+- Wide preserved the large color grouping after the close/detail tuning.
+- House, Tree, and Man scene switches completed without WebGL, shader, console
+  warning, or console error. A fresh material-study tab was also console-clean.
+- Production TypeScript and Vite build passed. The only build notice remains
+  the previously documented single-bundle size warning.
+- Material-study output uses the local material plus authored shell outlines
+  and the ordinary output transform; there is no bloom, AO, blur, or grading
+  pass manufacturing the white highlight or the color separation.
+
+## Texture study integration gate
+
+- Subject: one `34 × 26` ground surface with shallow deterministic relief and
+  no props, vegetation geometry, or presentation effects.
+- Source identities: meadow grass, dense grass, dry grass, and secondary
+  forest leaf litter from `medieval-road-system`.
+- Mechanism: direct albedo and OpenGL-normal sampling plus packed roughness/AO;
+  all channels share the same four broad deterministic blend weights. Grass
+  projections are decorrelated and the litter projection is intentionally
+  finer.
+- Fixed seed: shader field offsets `7.3 / 2.1` and `19.7 / 11.4`; no per-frame
+  randomness.
+- Native baseline: the Painterly shader toggle renders the same four-way PBR
+  blend through `MeshStandardMaterial` without the brush response.
+- Diagnostics: Source albedo and Texture weights both rendered cleanly.
+- Fixed views: Detail, Hero, and Wide rendered under the authored Verdant look;
+  the Detail view preserved leaf shapes and grass grain, while Wide preserved
+  the broad material islands.
+- Runtime: `2` render calls and approximately `41K` submitted triangles in the
+  browser validation frame. No WebGL, shader, console warning, or console error
+  was reported while switching between final, native, source-albedo, and weight
+  views.
+- Post/targets: no outline passes are active for this shell-free ground study;
+  the ordinary renderer path owns the final image and ACES remains the single
+  output transform.
+- Known compromise: the 1K source maps are intentionally repeated rather than
+  virtual-textured; this study evaluates painterly material response, not
+  strategic-world terrain streaming.
+
 ## Current edge/shadow revision gate
 
 The edge/shadow revision compiles and preserves the deterministic reset,
-fixed cameras, no-post path, and packed-field diagnostics. It adds a dedicated
+fixed cameras, material-local paint path, and packed-field diagnostics. It adds a dedicated
 `Shadow mask` view plus live outline-width variation and shadow brush-scale
 controls. The automated in-app preview connection was unavailable for this
 revision's first pass, so the previous accepted material-study frame remains
@@ -16,10 +75,12 @@ camera motion; shadow erosion at `0` and `1`.
 
 ## Anchored outline revision gate
 
-The outline vertex path now retains each source vertex's clip-space depth and
-dilates only its projected X/Y position. Directional jitter modulates outward
-reach instead of translating the complete shell, leaving the rendered model as
-the shared inner boundary for the rim and both outline roles.
+The original painterly rim and two outline shells remain the reference path for
+the simple material-study forms. Imported, skinned, and highly tessellated
+objects instead render unchanged into a silhouette mask. That mask stores the
+original object-space triplanar brush load, which is propagated only across a
+bounded dilation for the matching rim and two colored loops. No complex-asset
+outline vertex is displaced, so mesh tessellation cannot create spikes.
 
 - Production TypeScript and Vite build passed.
 - SeedThree beech Final view passed at Detail and Hero with seed `73021` and
@@ -28,8 +89,23 @@ the shared inner boundary for the rim and both outline roles.
 - Material-study Edge layers passed a stress case at outline width `0.12` and
   jitter `0.08`: the colored layers expanded outward while the source
   silhouettes remained fixed.
-- The current skinned CC0 man rendered the anchored shell without shader,
-  skinning, or console errors.
+- The current skinned CC0 man rendered the anchored painterly mask without
+  skinning or shader errors.
+- Diffuse-stroke and edge-layer checkpoints across separated walk poses keep
+  their brush regions attached to the same limbs and torso areas. Procedural
+  sampling uses bind/rest-pose coordinates while lighting uses deformed world
+  positions and normals.
+- Detail/Hero/Wide comparisons preserve model-relative outline reach, and the
+  visible-edge diagnostic confirms occluded edges contribute neither color nor
+  alpha through the man, residence, or tree.
+- Both width roles now reach a true zero: with rim and outline width at `0`,
+  the CC0 man has no residual colored contour. The residence mask uses one
+  shared identity for the complete building assembly; its `0.24` maximum
+  produces clearly separated primary and secondary loops around the full roof
+  and wall silhouette, while the tree's existing `0.005` response is retained.
+- Primary and secondary loop color inputs were exercised with contrasting
+  magenta/green values on both the residence mask path and the original
+  material-study shell path.
 - The SeedThree Wide bookmark still exposes the existing finite sky-dome edge;
   that framing defect is unrelated to the outline projection change.
 
@@ -62,7 +138,7 @@ the shared inner boundary for the rim and both outline roles.
 - Fixed views: Detail, Hero, and Wide rendered with the model centered and
   grounded at a target height of `1.72 m`.
 - Diagnostics: Source albedo showed the authored material separation; Final
-  showed the painterly response without post-processing.
+  showed the painterly response plus the bounded silhouette composite.
 - Temporal check: two paused crop captures were byte-identical; two running
   captures `650 ms` apart differed under the idle animation.
 - Runtime: `48` render calls and approximately `12K` submitted triangles in the
@@ -83,7 +159,7 @@ the shared inner boundary for the rim and both outline roles.
 | Time | `0.0 s`, frozen by Reset |
 | Camera | Hero bookmark |
 | Tone/output | ACES Filmic once, sRGB output |
-| Post passes | none |
+| Post passes | complex assets: rim + two painterly silhouette loops + output conversion |
 
 ## Visual contract
 
@@ -93,7 +169,8 @@ the shared inner boundary for the rim and both outline roles.
   edges; it cannot collapse into an ordinary smooth GGX highlight.
 - With Oil reflection at zero and Native sheen at zero, the material remains
   matte; there is no second hidden specular or clearcoat contribution.
-- The primary rim and silhouette remain readable with no bloom or compositor.
+- The primary rim and silhouette remain readable with no bloom; for complex
+  assets the compositor is limited to the bounded rim and two outline loops.
 - Broad B-channel carrier strokes keep every rim mark attached at the object
   boundary; low-frequency width envelopes and fine comb tips provide the
   dry-brush breakup.
@@ -114,7 +191,7 @@ the shared inner boundary for the rim and both outline roles.
 
 ## Evidence exercised
 
-- Final/no-post design frame (these are the same path by design).
+- Final painterly-material frame with the bounded outline composite.
 - Packed normal, diffuse B, detail A, toon-band, oil-only, rim-erosion,
   shadow-mask, color-coded edge-layer, and source-albedo diagnostics.
 - Detail, Hero, and Wide camera bookmarks.
@@ -144,11 +221,13 @@ Measured in the fixed design frame on the development host:
   `1.33 MiB` including the mip chain.
 - One `2048²` directional shadow map.
 - One PMREM environment generated at startup.
-- No full-screen composer, history, bloom, AO, or grading render targets.
+- Three silhouette-mask outline passes on complex assets; no history, bloom,
+  AO, or grading targets.
 
 The SeedThree beech Hero frame measured `10` render calls and `159K` submitted
-triangles on the same development host. These include the painterly branch
-shells, baked leaf cards, ground, and the shared shadow path.
+triangles on the same development host before the silhouette-composite
+revision. Current counters include the mask passes, baked leaf cards, ground,
+and the shared shadow path.
 
 The browser integration used for validation did not expose a disjoint timer
 query, so no GPU-millisecond claim is made. The FPS value is empirical frame
@@ -167,12 +246,13 @@ the final frame rather than only in the diagnostic.
 
 - UE5 mesh-distance-field AO is intentionally absent because core Three.js has
   no equivalent and a screen-space substitute would violate the tutorial's
-  material-local/no-post constraint.
+  material-local paint constraint.
 - The macro B/A field uses seam-safe object triplanar projection on curved and
   rounded hero objects; RG micro-relief remains the tutorial's tangent/UV path.
-- Back-face rim and two outline roles use separate Three.js meshes. This keeps
-  the graph inspectable but costs three extra draws per outlined object rather
-  than reproducing the tutorial's experimental per-instance role branch.
+- Three screen-space mask roles replace back-face outline meshes on complex
+  assets. This adds fixed-resolution mask/edge work, but outline shape is
+  independent of source triangle size and cannot tear sparse or split meshes
+  into spikes. The reference material-study forms retain their original shells.
 - Vite reports the expected single-bundle size warning because Three.js and its
   renderer ship in the demo entry chunk; production build output is otherwise
   clean.
