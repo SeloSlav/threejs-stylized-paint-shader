@@ -1,7 +1,10 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import {
+  TransformControls,
+  type TransformControlsMode,
+} from 'three/addons/controls/TransformControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import './style.css';
 import {
   PAINT_DEBUG_MODES,
@@ -11,13 +14,25 @@ import {
   createPaintShellMaterial,
   debugModeIndex,
   installSmoothNormalAttribute,
+  readPainterlyControls,
   type PaintGlobalUniforms,
   type PaintPalette,
+  type PainterlyControlValues,
   type PainterlyMaterial,
 } from './PainterlyMaterial.ts';
 import { createPaintTexture, type PaintTextureMetadata } from './paintTexture.ts';
+import {
+  PAINT_SCENES,
+  paintSceneById,
+  type CameraBookmark,
+  type CameraBookmarkName,
+  type PaintSceneDefinition,
+  type SceneId,
+  type ScenePaintedMeshOptions,
+  type ScenePaintedObjectOptions,
+} from './scenes/sceneRegistry.ts';
 
-type PresetName = 'high-key' | 'noir' | 'ultraviolet';
+type PresetName = 'high-key' | 'noir' | 'ultraviolet' | 'earthy' | 'sky' | 'verdant';
 
 interface Preset {
   label: string;
@@ -41,15 +56,30 @@ interface PaintedObject {
   base: THREE.Mesh;
   material: PainterlyMaterial;
   shells: THREE.ShaderMaterial[];
-  paletteIndex: number;
+  paletteIndex: number | null;
   label: string;
   spin: THREE.Vector3;
+  initialPosition: THREE.Vector3;
   initialRotation: THREE.Euler;
+  initialScale: THREE.Vector3;
 }
 
-interface CameraBookmark {
-  position: THREE.Vector3;
-  target: THREE.Vector3;
+interface PaintLabSettingsExport {
+  format: 'paint-lab-settings';
+  version: 1;
+  exportedAt: string;
+  threeRevision: string;
+  scene: {
+    id: SceneId;
+    label: string;
+  };
+  look: {
+    id: PresetName;
+    label: string;
+    palettes: PaintPalette[];
+  };
+  paintTexture: PaintTextureMetadata;
+  controls: PainterlyControlValues;
 }
 
 const PRESETS: Record<PresetName, Preset> = {
@@ -149,25 +179,109 @@ const PRESETS: Record<PresetName, Preset> = {
       },
     ],
   },
+  earthy: {
+    label: 'Earthy',
+    eyebrow: 'UMBER SOIL / OCHRE LIGHT',
+    top: '#80745e',
+    horizon: '#cdb58d',
+    abyss: '#130d09',
+    fog: '#6b5a49',
+    key: '#ffd39d',
+    keyIntensity: 5.6,
+    fill: '#74816b',
+    fillIntensity: 0.24,
+    accent: '#c85a32',
+    accentIntensity: 31,
+    exposure: 1.04,
+    palettes: [
+      {
+        dark: '#24140d', light: '#75452e', reflectionDark: '#8f3423', reflectionLight: '#d98a45', rim: '#f4d2a1', outline: '#76846a', outlineSecondary: '#d9b77d',
+      },
+      {
+        dark: '#1d2115', light: '#65704a', reflectionDark: '#71462b', reflectionLight: '#c79b58', rim: '#ead8aa', outline: '#8f9a69', outlineSecondary: '#c8a978',
+      },
+      {
+        dark: '#342419', light: '#a27a50', reflectionDark: '#9d4e31', reflectionLight: '#e1b56f', rim: '#f5dfb6', outline: '#79765e', outlineSecondary: '#d4c08b',
+      },
+      {
+        dark: '#291a0d', light: '#946127', reflectionDark: '#a74025', reflectionLight: '#e2a94f', rim: '#f7d991', outline: '#6f8060', outlineSecondary: '#daba6c',
+      },
+      {
+        dark: '#2a1512', light: '#874d3c', reflectionDark: '#a63e2c', reflectionLight: '#d9875a', rim: '#f0c7a0', outline: '#7d7661', outlineSecondary: '#d8a77b',
+      },
+    ],
+  },
+  sky: {
+    label: 'Open sky',
+    eyebrow: 'CERULEAN AIR / CLOUD LIGHT',
+    top: '#3b78ad',
+    horizon: '#dcecf5',
+    abyss: '#08121e',
+    fog: '#89aec6',
+    key: '#fff2cf',
+    keyIntensity: 5.7,
+    fill: '#77bfe8',
+    fillIntensity: 0.48,
+    accent: '#ff9275',
+    accentIntensity: 24,
+    exposure: 1.12,
+    palettes: [
+      {
+        dark: '#081a33', light: '#2b70a4', reflectionDark: '#126a90', reflectionLight: '#9fe4f2', rim: '#fff5dd', outline: '#c8efff', outlineSecondary: '#ffb899',
+      },
+      {
+        dark: '#102446', light: '#4b8fc2', reflectionDark: '#6b5bb0', reflectionLight: '#b8edff', rim: '#fff8e6', outline: '#d6f5ff', outlineSecondary: '#ffc6ad',
+      },
+      {
+        dark: '#123656', light: '#5fa8ca', reflectionDark: '#d06472', reflectionLight: '#ffd0ae', rim: '#fff6e0', outline: '#c4eff5', outlineSecondary: '#ffc1a2',
+      },
+      {
+        dark: '#152b45', light: '#6b9ec4', reflectionDark: '#b95f69', reflectionLight: '#ffd39f', rim: '#fff4d6', outline: '#d2f2ff', outlineSecondary: '#ffb58e',
+      },
+      {
+        dark: '#0c2841', light: '#467f9a', reflectionDark: '#2e7394', reflectionLight: '#afe7e3', rim: '#f3fbef', outline: '#bfeaff', outlineSecondary: '#ffd2b0',
+      },
+    ],
+  },
+  verdant: {
+    label: 'Verdant',
+    eyebrow: 'FERN SHADOW / MOSS GLOW',
+    top: '#294e42',
+    horizon: '#a8bea0',
+    abyss: '#07110c',
+    fog: '#435e50',
+    key: '#eee3a4',
+    keyIntensity: 5.4,
+    fill: '#5b9780',
+    fillIntensity: 0.3,
+    accent: '#b7c84b',
+    accentIntensity: 26,
+    exposure: 1.07,
+    palettes: [
+      {
+        dark: '#0d2017', light: '#315f40', reflectionDark: '#506c2c', reflectionLight: '#bfd26c', rim: '#eef1bd', outline: '#8bb99b', outlineSecondary: '#d8d999',
+      },
+      {
+        dark: '#142117', light: '#4a7348', reflectionDark: '#7b5a2c', reflectionLight: '#d2bf69', rim: '#f2ecc0', outline: '#9bc0a0', outlineSecondary: '#d6cf89',
+      },
+      {
+        dark: '#172719', light: '#628956', reflectionDark: '#4d7a47', reflectionLight: '#afd486', rim: '#edf5ca', outline: '#89b6a1', outlineSecondary: '#c8d990',
+      },
+      {
+        dark: '#241a12', light: '#75583a', reflectionDark: '#5d3e25', reflectionLight: '#c09a5a', rim: '#eadcae', outline: '#7fa28a', outlineSecondary: '#c9bb7a',
+      },
+      {
+        dark: '#102322', light: '#3f7265', reflectionDark: '#3c6f5f', reflectionLight: '#a8d0a3', rim: '#e9f0c1', outline: '#91c1a8', outlineSecondary: '#d6dc91',
+      },
+    ],
+  },
 };
 
-const CAMERA_BOOKMARKS: Record<'near' | 'design' | 'far', CameraBookmark> = {
-  near: {
-    position: new THREE.Vector3(1.1, 2.25, 7.4),
-    target: new THREE.Vector3(-1.55, 0.35, 0.35),
-  },
-  design: {
-    position: new THREE.Vector3(10.7, 6.2, 14.8),
-    target: new THREE.Vector3(0.1, 0.75, -0.35),
-  },
-  far: {
-    position: new THREE.Vector3(15.6, 9.5, 22.5),
-    target: new THREE.Vector3(0, 0.7, -0.8),
-  },
-};
+const initialScene = PAINT_SCENES[0];
+if (!initialScene) throw new Error('The paint scene registry is empty.');
 
 const defaultControls = {
-  brushScale: 3.25,
+  brushScale: 0.7,
   parallaxDepth: 0.048,
   normalStrength: 0.9,
   strokeContrast: 0.9,
@@ -177,25 +291,30 @@ const defaultControls = {
   bandSoftness: 0.01,
   shadowValue: 0,
   midtoneValue: 0.25,
-  oilStrength: 0.85,
-  oilThreshold: 0.5,
+  oilStrength: 0.68,
+  oilThreshold: 0.68,
+  nativeSheen: 0,
+  highlightBrushiness: 0.82,
+  highlightSteps: 3,
   roughnessVariation: 0.36,
   rimStrength: 0.9,
   rimPower: 5,
-  edgeErosion: 0.68,
-  edgeBristleReach: 0.66,
-  erosionScale: 0.58,
+  edgeErosion: 0.82,
+  edgeBristleReach: 0.76,
+  erosionScale: 0.66,
   curvatureGuard: 8,
   shadowErosion: 1,
-  shadowMaskOffset: 0,
-  outerRimWidth: 0.06,
-  rimContinuity: 0.9,
-  outlineWidth: 0.128,
-  outlineJitter: 0.046,
-  outlineSeparation: 1.72,
-  outlineBreakup: 0.48,
-  outlineStrokeWidth: 1.55,
-};
+  shadowMaskOffset: -0.05,
+  shadowBrushScale: 0.72,
+  outerRimWidth: 0.002,
+  rimContinuity: 0.84,
+  outlineWidth: 0.028,
+  outlineJitter: 0.036,
+  outlineSeparation: 1.55,
+  outlineBreakup: 0.62,
+  outlineStrokeWidth: 2.15,
+  outlineWidthVariation: 0.82,
+} satisfies PainterlyControlValues;
 
 const root = document.querySelector<HTMLDivElement>('#app');
 if (!root) throw new Error('Missing #app root.');
@@ -233,7 +352,7 @@ const camera = new THREE.PerspectiveCamera(
   0.1,
   120,
 );
-camera.position.copy(CAMERA_BOOKMARKS.design.position);
+camera.position.copy(initialScene.cameraBookmarks.design.position);
 
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
@@ -241,12 +360,24 @@ controls.dampingFactor = 0.055;
 controls.enablePan = true;
 controls.screenSpacePanning = false;
 controls.mouseButtons.RIGHT = THREE.MOUSE.PAN;
-controls.minDistance = 5.5;
-controls.maxDistance = 35;
+controls.minDistance = initialScene.orbitDistance.min;
+controls.maxDistance = initialScene.orbitDistance.max;
 controls.minPolarAngle = 0.35;
 controls.maxPolarAngle = Math.PI * 0.49;
-controls.target.copy(CAMERA_BOOKMARKS.design.target);
+controls.target.copy(initialScene.cameraBookmarks.design.target);
 controls.update();
+
+const transformControls = new TransformControls(camera, renderer.domElement);
+transformControls.setMode('translate');
+transformControls.setSpace('world');
+transformControls.setSize(0.78);
+scene.add(transformControls.getHelper());
+transformControls.addEventListener('dragging-changed', (event) => {
+  const dragging = Boolean(event.value);
+  controls.enabled = !dragging;
+  if (dragging) cameraGoal = null;
+});
+transformControls.addEventListener('objectChange', updateTransformReadout);
 
 const room = new RoomEnvironment();
 const pmrem = new THREE.PMREMGenerator(renderer);
@@ -273,12 +404,12 @@ keyLight.position.set(-7.5, 11.5, 8.5);
 keyLight.target.position.set(0, 0.3, -0.5);
 keyLight.castShadow = true;
 keyLight.shadow.mapSize.set(2048, 2048);
-keyLight.shadow.camera.left = -13;
-keyLight.shadow.camera.right = 13;
-keyLight.shadow.camera.top = 12;
-keyLight.shadow.camera.bottom = -8;
+keyLight.shadow.camera.left = -20;
+keyLight.shadow.camera.right = 20;
+keyLight.shadow.camera.top = 22;
+keyLight.shadow.camera.bottom = -12;
 keyLight.shadow.camera.near = 0.5;
-keyLight.shadow.camera.far = 38;
+keyLight.shadow.camera.far = 60;
 keyLight.shadow.bias = -0.0003;
 keyLight.shadow.normalBias = 0.035;
 scene.add(keyLight, keyLight.target);
@@ -306,9 +437,13 @@ paintGlobals.lightDirection.value = keyLight.position
 
 const paintedObjects: PaintedObject[] = [];
 const animatedObjects: PaintedObject[] = [];
-buildGallery();
+const sceneFrameUpdaters: Array<(deltaSeconds: number) => void> = [];
+const sceneContentRoot = new THREE.Group();
+sceneContentRoot.name = 'Active paint scene';
+scene.add(sceneContentRoot);
 
 let currentPreset: PresetName = 'noir';
+let currentScene: PaintSceneDefinition = initialScene;
 let autoRotate = true;
 let paused = false;
 let elapsedTime = 0;
@@ -318,12 +453,17 @@ let frameCounter = 0;
 let statsElapsed = 0;
 let fpsEstimate = 60;
 let hoveredMesh: THREE.Object3D | null = null;
+let selectedPaintedObject: PaintedObject | null = null;
+const pointerDownClient = new THREE.Vector2();
+let pointerGestureMoved = false;
+let pointerGestureStartedOnGizmo = false;
 
 const pointer = new THREE.Vector2(2, 2);
 const raycaster = new THREE.Raycaster();
 let previousFrameTime = performance.now();
+let sceneActivationId = 0;
 
-applyPreset('noir');
+activateScene(initialScene.id, true);
 applyTexturePreview(activeTexture.metadata, currentDebugMode);
 bindInterface();
 onResize();
@@ -334,180 +474,30 @@ requestAnimationFrame(() => {
   requestAnimationFrame(animate);
 });
 
-function buildGallery(): void {
-  const floorGeometry = installSmoothNormalAttribute(new THREE.PlaneGeometry(24, 18, 1, 1), 'existing');
-  const floor = createPaintedObject({
-    label: 'Painted ground',
-    geometry: floorGeometry,
-    paletteIndex: 4,
-    position: new THREE.Vector3(0, -1.88, -1.2),
-    rotation: new THREE.Euler(-Math.PI / 2, 0, -0.03),
-    shells: false,
-    roughness: 0.78,
-    metalness: 0.02,
-    clearcoat: 0.12,
-  });
-  floor.base.receiveShadow = true;
+type CreateObjectOptions = ScenePaintedObjectOptions;
 
-  const leftWallGeometry = installSmoothNormalAttribute(new THREE.PlaneGeometry(11, 11, 1, 1), 'existing');
-  const leftWall = createPaintedObject({
-    label: 'Painted wall',
-    geometry: leftWallGeometry,
-    paletteIndex: 2,
-    position: new THREE.Vector3(-7.2, 3.25, -3.2),
-    rotation: new THREE.Euler(0, Math.PI * 0.5, 0),
-    shells: false,
-    roughness: 0.8,
-    metalness: 0,
-    clearcoat: 0.08,
-  });
-  leftWall.base.receiveShadow = true;
-
-  const heroSphere = createPaintedObject({
-    label: 'Hero sphere',
-    geometry: installSmoothNormalAttribute(new THREE.SphereGeometry(2.3, 128, 72), 'existing'),
-    paletteIndex: 0,
-    position: new THREE.Vector3(-2.45, 0.48, 0.85),
-    spin: new THREE.Vector3(0, 0.11, 0),
-    triplanarMacro: true,
-    objectTextureScale: 0.2,
-    roughness: 0.27,
-    metalness: 0.5,
-    clearcoat: 0.72,
-    clearcoatRoughness: 0.16,
-  });
-
-  createPaintedObject({
-    label: 'Floating sphere',
-    geometry: installSmoothNormalAttribute(new THREE.SphereGeometry(1.55, 96, 56), 'existing'),
-    paletteIndex: 1,
-    position: new THREE.Vector3(-0.05, 3.25, -2.25),
-    spin: new THREE.Vector3(0, -0.08, 0),
-    triplanarMacro: true,
-    objectTextureScale: 0.22,
-    roughness: 0.31,
-    metalness: 0.44,
-    clearcoat: 0.64,
-  });
-
-  createPaintedObject({
-    label: 'Mid sphere',
-    geometry: installSmoothNormalAttribute(new THREE.SphereGeometry(1.38, 96, 56), 'existing'),
-    paletteIndex: 2,
-    position: new THREE.Vector3(1.35, 0.02, -1.35),
-    spin: new THREE.Vector3(0, 0.13, 0),
-    triplanarMacro: true,
-    objectTextureScale: 0.24,
-    roughness: 0.34,
-    metalness: 0.38,
-    clearcoat: 0.55,
-  });
-
-  const wedgeShape = new THREE.Shape();
-  wedgeShape.moveTo(-2.2, -1.55);
-  wedgeShape.lineTo(2.2, -1.55);
-  wedgeShape.lineTo(0.2, 1.75);
-  wedgeShape.closePath();
-  const wedgeGeometry = new THREE.ExtrudeGeometry(wedgeShape, {
-    depth: 2.65,
-    steps: 1,
-    bevelEnabled: true,
-    bevelSegments: 4,
-    bevelSize: 0.11,
-    bevelThickness: 0.11,
-  });
-  wedgeGeometry.center();
-  wedgeGeometry.computeVertexNormals();
-  createPaintedObject({
-    label: 'Wedge block',
-    geometry: installSmoothNormalAttribute(wedgeGeometry, 'radial'),
-    paletteIndex: 3,
-    position: new THREE.Vector3(4.35, -0.1, 0.25),
-    rotation: new THREE.Euler(-0.08, -0.64, 0.04),
-    spin: new THREE.Vector3(0, -0.028, 0),
-    triplanarMacro: true,
-    objectTextureScale: 0.16,
-    roughness: 0.52,
-    metalness: 0.11,
-    clearcoat: 0.36,
-  });
-
-  createPaintedObject({
-    label: 'Suspended cylinder',
-    geometry: installSmoothNormalAttribute(new THREE.CylinderGeometry(0.68, 0.68, 1.65, 72, 4), 'radial'),
-    paletteIndex: 4,
-    position: new THREE.Vector3(-2.0, 3.95, -2.65),
-    rotation: new THREE.Euler(0.05, 0.1, Math.PI / 2),
-    spin: new THREE.Vector3(0.04, 0.05, 0.12),
-    roughness: 0.3,
-    metalness: 0.46,
-    clearcoat: 0.56,
-  });
-
-  createPaintedObject({
-    label: 'Brush cylinder',
-    geometry: installSmoothNormalAttribute(new THREE.CylinderGeometry(1.02, 1.02, 2.75, 84, 6), 'radial'),
-    paletteIndex: 1,
-    position: new THREE.Vector3(3.6, -0.5, -2.45),
-    rotation: new THREE.Euler(Math.PI / 2, 0.15, -0.42),
-    spin: new THREE.Vector3(0.03, 0.04, -0.02),
-    roughness: 0.29,
-    metalness: 0.5,
-    clearcoat: 0.62,
-  });
-
-  createPaintedObject({
-    label: 'Rounded monolith',
-    geometry: installSmoothNormalAttribute(new RoundedBoxGeometry(1.2, 2.6, 1.2, 8, 0.18), 'radial'),
-    paletteIndex: 3,
-    position: new THREE.Vector3(5.35, 2.8, -3.55),
-    rotation: new THREE.Euler(0.08, -0.24, -0.13),
-    spin: new THREE.Vector3(0.02, -0.07, 0.025),
-    triplanarMacro: true,
-    objectTextureScale: 0.3,
-    roughness: 0.38,
-    metalness: 0.3,
-    clearcoat: 0.48,
-  });
-
-  const pedestalGeometry = installSmoothNormalAttribute(new RoundedBoxGeometry(4.8, 0.48, 4.1, 5, 0.12), 'radial');
-  const pedestal = createPaintedObject({
-    label: 'Painted plinth',
-    geometry: pedestalGeometry,
-    paletteIndex: 3,
-    position: new THREE.Vector3(0.55, -1.55, -1.3),
-    rotation: new THREE.Euler(0, -0.08, 0),
-    shells: false,
-    roughness: 0.67,
-    metalness: 0.04,
-    clearcoat: 0.18,
-  });
-  pedestal.base.receiveShadow = true;
-
-  heroSphere.group.userData.primary = true;
-}
-
-interface CreateObjectOptions {
-  label: string;
-  geometry: THREE.BufferGeometry;
-  paletteIndex: number;
-  position: THREE.Vector3;
-  rotation?: THREE.Euler;
-  spin?: THREE.Vector3;
-  shells?: boolean;
-  roughness?: number;
-  metalness?: number;
-  clearcoat?: number;
-  clearcoatRoughness?: number;
-  triplanarMacro?: boolean;
-  objectTextureScale?: number;
-}
-
-function createPaintedObject(options: CreateObjectOptions): PaintedObject {
-  const palette = PRESETS.noir.palettes[options.paletteIndex % PRESETS.noir.palettes.length];
+function createPaintedObject(
+  options: CreateObjectOptions,
+  parent: THREE.Object3D = sceneContentRoot,
+): PaintedObject {
+  const paletteIndex = options.paletteIndex ?? null;
+  const palette = options.palette ?? (
+    paletteIndex === null
+      ? undefined
+      : PRESETS.noir.palettes[paletteIndex % PRESETS.noir.palettes.length]
+  );
   if (!palette) throw new Error('Missing palette.');
+  const geometry = options.geometry.getAttribute('aSmoothNormal')
+    ? options.geometry
+    : installSmoothNormalAttribute(options.geometry, options.smoothNormals ?? 'existing');
   const material = createPainterlyMaterial(paintGlobals, {
     palette,
+    surfaceColor: options.surfaceColor,
+    surfaceMap: options.surfaceMap,
+    texturelessSurface: options.texturelessSurface,
+    surfaceMapStrength: options.surfaceMapStrength,
+    surfaceAlphaTest: options.surfaceAlphaTest,
+    sourceAlbedoWeight: options.sourceAlbedoWeight,
     triplanarMacro: options.triplanarMacro,
     objectTextureScale: options.objectTextureScale,
     roughness: options.roughness,
@@ -515,19 +505,27 @@ function createPaintedObject(options: CreateObjectOptions): PaintedObject {
     clearcoat: options.clearcoat,
     clearcoatRoughness: options.clearcoatRoughness,
     envMapIntensity: 0.82,
+    side: options.side,
   });
-  const base = new THREE.Mesh(options.geometry, material);
+  const base = new THREE.Mesh(geometry, material);
   base.castShadow = true;
   base.receiveShadow = true;
   base.userData.paintLabel = options.label;
 
-  const depthMaterial = createPainterlyDepthMaterial(paintGlobals);
+  const depthMaterial = createPainterlyDepthMaterial(
+    paintGlobals,
+    options.objectTextureScale ?? 0.26,
+    options.surfaceMap ?? null,
+    options.surfaceAlphaTest ?? 0,
+    options.side ?? THREE.FrontSide,
+  );
   base.customDepthMaterial = depthMaterial;
 
   const group = new THREE.Group();
   group.name = options.label;
-  group.position.copy(options.position);
+  group.position.copy(options.position ?? new THREE.Vector3());
   if (options.rotation) group.rotation.copy(options.rotation);
+  if (options.scale) group.scale.copy(options.scale);
   group.add(base);
 
   const shells: THREE.ShaderMaterial[] = [];
@@ -537,10 +535,11 @@ function createPaintedObject(options: CreateObjectOptions): PaintedObject {
       color: palette.rim,
       layer: 0,
       widthMultiplier: 1,
+      objectWidthMultiplier: options.shellWidthScale,
       coverageBias: 0.08,
       objectTextureScale: options.objectTextureScale,
     });
-    const rim = new THREE.Mesh(options.geometry, rimMaterial);
+    const rim = new THREE.Mesh(geometry, rimMaterial);
     rim.renderOrder = -1;
     rim.userData.paintShell = true;
     group.add(rim);
@@ -551,11 +550,12 @@ function createPaintedObject(options: CreateObjectOptions): PaintedObject {
       color: palette.outline,
       layer: 1,
       widthMultiplier: 1,
+      objectWidthMultiplier: options.shellWidthScale,
       coverageBias: -0.01,
       offsetDirection: new THREE.Vector2(0.85, 0.28).normalize(),
       objectTextureScale: options.objectTextureScale,
     });
-    const outlineMeshA = new THREE.Mesh(options.geometry, outlineA);
+    const outlineMeshA = new THREE.Mesh(geometry, outlineA);
     outlineMeshA.renderOrder = -3;
     outlineMeshA.userData.paintShell = true;
     group.add(outlineMeshA);
@@ -568,9 +568,10 @@ function createPaintedObject(options: CreateObjectOptions): PaintedObject {
       coverageBias: 0.025,
       offsetDirection: new THREE.Vector2(-0.52, 0.55).normalize(),
       offsetMultiplier: 1.35,
+      objectWidthMultiplier: options.shellWidthScale,
       objectTextureScale: options.objectTextureScale,
     });
-    const outlineMeshB = new THREE.Mesh(options.geometry, outlineB);
+    const outlineMeshB = new THREE.Mesh(geometry, outlineB);
     outlineMeshB.renderOrder = -4;
     outlineMeshB.userData.paintShell = true;
     group.add(outlineMeshB);
@@ -582,15 +583,154 @@ function createPaintedObject(options: CreateObjectOptions): PaintedObject {
     base,
     material,
     shells,
-    paletteIndex: options.paletteIndex,
+    paletteIndex,
     label: options.label,
     spin: options.spin ?? new THREE.Vector3(),
+    initialPosition: group.position.clone(),
     initialRotation: group.rotation.clone(),
+    initialScale: group.scale.clone(),
   };
   paintedObjects.push(paintedObject);
   if (paintedObject.spin.lengthSq() > 0) animatedObjects.push(paintedObject);
-  scene.add(group);
+  parent.add(group);
   return paintedObject;
+}
+
+function createPaintedMesh(
+  options: ScenePaintedMeshOptions,
+  parent: THREE.Object3D,
+): PaintedObject {
+  const { source, geometry = source.geometry, ...paintOptions } = options;
+  const painted = createPaintedObject({
+    ...paintOptions,
+    geometry,
+    position: source.position.clone(),
+    rotation: source.rotation.clone(),
+    scale: source.scale.clone(),
+  }, parent);
+
+  if (!(source instanceof THREE.SkinnedMesh)) return painted;
+
+  const originalBase = painted.base;
+  const skinnedBase = createSkinnedSurfaceMesh(source, originalBase);
+  originalBase.removeFromParent();
+  painted.group.add(skinnedBase);
+  painted.base = skinnedBase;
+
+  const shellMeshes = painted.group.children.filter((child) => (
+    child instanceof THREE.Mesh && child.userData.paintShell === true
+  )) as THREE.Mesh[];
+  for (const shellMesh of shellMeshes) {
+    const skinnedShell = createSkinnedSurfaceMesh(source, shellMesh);
+    shellMesh.removeFromParent();
+    painted.group.add(skinnedShell);
+  }
+  return painted;
+}
+
+function createSkinnedSurfaceMesh(
+  source: THREE.SkinnedMesh,
+  template: THREE.Mesh,
+): THREE.SkinnedMesh {
+  const mesh = new THREE.SkinnedMesh(template.geometry, template.material);
+  mesh.name = template.name;
+  mesh.bindMode = source.bindMode;
+  mesh.bind(source.skeleton, source.bindMatrix);
+  mesh.bindMatrixInverse.copy(source.bindMatrixInverse);
+  mesh.castShadow = template.castShadow;
+  mesh.receiveShadow = template.receiveShadow;
+  mesh.renderOrder = template.renderOrder;
+  mesh.frustumCulled = false;
+  mesh.userData = { ...template.userData };
+  mesh.customDepthMaterial = template.customDepthMaterial;
+  mesh.customDistanceMaterial = template.customDistanceMaterial;
+  if (source.morphTargetInfluences) {
+    mesh.morphTargetInfluences = [...source.morphTargetInfluences];
+  }
+  if (source.morphTargetDictionary) {
+    mesh.morphTargetDictionary = { ...source.morphTargetDictionary };
+  }
+  return mesh;
+}
+
+function activateScene(id: SceneId, immediate = false): void {
+  const nextScene = paintSceneById(id);
+  if (!nextScene) throw new Error(`Unknown paint scene: ${id}`);
+
+  const activationId = ++sceneActivationId;
+  disposeSceneContent();
+  currentScene = nextScene;
+  applySceneControlDefaults(nextScene);
+  const buildContext = {
+    root: sceneContentRoot,
+    addPaintedObject: (options, parent = sceneContentRoot) => {
+      const painted = createPaintedObject(options, parent);
+      return { group: painted.group, base: painted.base };
+    },
+    addPaintedMesh: (options, parent = sceneContentRoot) => {
+      const painted = createPaintedMesh(options, parent);
+      return { group: painted.group, base: painted.base };
+    },
+    isActive: () => sceneActivationId === activationId && currentScene.id === nextScene.id,
+    onFrame: (update) => {
+      if (sceneActivationId === activationId && currentScene.id === nextScene.id) {
+        sceneFrameUpdaters.push(update);
+      }
+    },
+  } satisfies import('./scenes/sceneRegistry.ts').SceneBuildContext;
+  try {
+    const buildResult = nextScene.build(buildContext);
+    if (buildResult instanceof Promise) {
+      void buildResult.catch((error) => {
+        if (buildContext.isActive()) console.error(`[Paint/Lab] Could not build ${nextScene.label}.`, error);
+      });
+    }
+  } catch (error) {
+    console.error(`[Paint/Lab] Could not build ${nextScene.label}.`, error);
+  }
+
+  controls.minDistance = nextScene.orbitDistance.min;
+  controls.maxDistance = nextScene.orbitDistance.max;
+  applyPreset(currentPreset);
+
+  const design = nextScene.cameraBookmarks.design;
+  if (immediate) {
+    cameraGoal = null;
+    camera.position.copy(design.position);
+    controls.target.copy(design.target);
+    controls.update();
+  } else {
+    setCameraBookmark('design');
+  }
+
+  const sceneSelect = document.querySelector<HTMLSelectElement>('#scene-select');
+  if (sceneSelect) sceneSelect.value = nextScene.id;
+  setHover(null);
+}
+
+function disposeSceneContent(): void {
+  clearSelection();
+  const geometries = new Set<THREE.BufferGeometry>();
+  const materials = new Set<THREE.Material>();
+
+  sceneContentRoot.traverse((object) => {
+    if (!(object instanceof THREE.Mesh)) return;
+    geometries.add(object.geometry);
+    const meshMaterials = Array.isArray(object.material) ? object.material : [object.material];
+    for (const material of meshMaterials) materials.add(material);
+    if (object.customDepthMaterial) materials.add(object.customDepthMaterial);
+    if (object.customDistanceMaterial) materials.add(object.customDistanceMaterial);
+  });
+
+  sceneContentRoot.clear();
+  delete sceneContentRoot.userData.seedThree;
+  for (const material of materials) material.dispose();
+  for (const geometry of geometries) geometry.dispose();
+  paintedObjects.length = 0;
+  animatedObjects.length = 0;
+  sceneFrameUpdaters.length = 0;
+  hoveredMesh = null;
+  delete sceneContentRoot.userData.cc0Man;
 }
 
 function createSky(uniforms: typeof skyUniforms): THREE.Mesh {
@@ -645,6 +785,7 @@ function applyPreset(name: PresetName): void {
   renderer.toneMappingExposure = preset.exposure;
 
   for (const painted of paintedObjects) {
+    if (painted.paletteIndex === null) continue;
     const palette = preset.palettes[painted.paletteIndex % preset.palettes.length];
     if (!palette) continue;
     const materialPalette = painted.material.paintPalette;
@@ -685,7 +826,11 @@ function bindInterface(): void {
   });
 
   document.querySelectorAll<HTMLButtonElement>('[data-camera]').forEach((button) => {
-    button.addEventListener('click', () => setCameraBookmark(button.dataset.camera as keyof typeof CAMERA_BOOKMARKS));
+    button.addEventListener('click', () => setCameraBookmark(button.dataset.camera as CameraBookmarkName));
+  });
+
+  requiredElement<HTMLSelectElement>('#scene-select').addEventListener('change', (event) => {
+    activateScene((event.target as HTMLSelectElement).value as SceneId);
   });
 
   const debugSelect = requiredElement<HTMLSelectElement>('#debug-mode');
@@ -716,12 +861,22 @@ function bindInterface(): void {
   });
 
   requiredElement<HTMLButtonElement>('#reset-controls').addEventListener('click', resetShaderControls);
+  requiredElement<HTMLButtonElement>('#export-settings').addEventListener('click', exportSettings);
   requiredElement<HTMLButtonElement>('#capture-frame').addEventListener('click', captureFrame);
   requiredElement<HTMLButtonElement>('#panel-toggle').addEventListener('click', () => {
     document.body.classList.toggle('panel-collapsed');
   });
 
+  document.querySelectorAll<HTMLButtonElement>('[data-transform-mode]').forEach((button) => {
+    button.addEventListener('click', () => {
+      setTransformMode(button.dataset.transformMode as TransformControlsMode);
+    });
+  });
+  requiredElement<HTMLButtonElement>('#transform-close').addEventListener('click', clearSelection);
+
+  renderer.domElement.addEventListener('pointerdown', onPointerDown);
   renderer.domElement.addEventListener('pointermove', onPointerMove);
+  renderer.domElement.addEventListener('pointerup', onPointerUp);
   renderer.domElement.addEventListener('pointerleave', () => {
     pointer.set(2, 2);
     setHover(null);
@@ -744,7 +899,6 @@ function replacePaintTexture(seed: number): void {
     painted.material.needsUpdate = true;
     const depth = painted.base.customDepthMaterial;
     if (depth instanceof THREE.MeshDepthMaterial) {
-      depth.map = activeTexture.texture;
       depth.needsUpdate = true;
     }
   }
@@ -754,27 +908,40 @@ function replacePaintTexture(seed: number): void {
 }
 
 function resetShaderControls(): void {
-  for (const [name, value] of Object.entries(defaultControls)) {
-    const uniform = paintGlobals[name as keyof PaintGlobalUniforms];
-    if (uniform) uniform.value = value;
-  }
-  document.querySelectorAll<HTMLInputElement>('input[type="range"][data-uniform]').forEach((input) => {
-    const key = input.dataset.uniform as keyof typeof defaultControls;
-    const value = defaultControls[key];
-    if (value === undefined) return;
-    input.value = String(value);
-    updateRangeOutput(input);
-  });
+  clearSelection();
+  applySceneControlDefaults(currentScene);
   const debugSelect = requiredElement<HTMLSelectElement>('#debug-mode');
   debugSelect.value = 'Final';
   debugSelect.dispatchEvent(new Event('change'));
   replacePaintTexture(73021);
-  for (const object of paintedObjects) object.group.rotation.copy(object.initialRotation);
+  for (const object of paintedObjects) {
+    object.group.position.copy(object.initialPosition);
+    object.group.rotation.copy(object.initialRotation);
+    object.group.scale.copy(object.initialScale);
+  }
   elapsedTime = 0;
   paused = true;
   requiredElement<HTMLInputElement>('#pause-motion').checked = true;
   applyPreset('noir');
   setCameraBookmark('design');
+}
+
+function applySceneControlDefaults(sceneDefinition: PaintSceneDefinition): void {
+  const values: Partial<Record<keyof PaintGlobalUniforms, number>> = {
+    ...defaultControls,
+    ...sceneDefinition.controlOverrides,
+  };
+  for (const [name, value] of Object.entries(values)) {
+    const uniform = paintGlobals[name as keyof PaintGlobalUniforms];
+    if (uniform && typeof value === 'number') uniform.value = value;
+  }
+  document.querySelectorAll<HTMLInputElement>('input[type="range"][data-uniform]').forEach((input) => {
+    const key = input.dataset.uniform as keyof PaintGlobalUniforms;
+    const value = values[key];
+    if (value === undefined) return;
+    input.value = String(value);
+    updateRangeOutput(input);
+  });
 }
 
 function updateRangeOutput(input: HTMLInputElement): void {
@@ -784,8 +951,8 @@ function updateRangeOutput(input: HTMLInputElement): void {
   output.value = Number(input.value).toFixed(precision);
 }
 
-function setCameraBookmark(name: keyof typeof CAMERA_BOOKMARKS): void {
-  const bookmark = CAMERA_BOOKMARKS[name];
+function setCameraBookmark(name: CameraBookmarkName): void {
+  const bookmark = currentScene.cameraBookmarks[name];
   cameraGoal = {
     position: bookmark.position.clone(),
     target: bookmark.target.clone(),
@@ -814,6 +981,36 @@ function onPointerMove(event: PointerEvent): void {
   const bounds = renderer.domElement.getBoundingClientRect();
   pointer.x = ((event.clientX - bounds.left) / bounds.width) * 2 - 1;
   pointer.y = -((event.clientY - bounds.top) / bounds.height) * 2 + 1;
+  if (transformControls.dragging && event.button !== -1) {
+    transformControls.pointerMove({
+      x: pointer.x,
+      y: pointer.y,
+      button: -1,
+    } as PointerEvent);
+  }
+  const pointerDeltaX = event.clientX - pointerDownClient.x;
+  const pointerDeltaY = event.clientY - pointerDownClient.y;
+  if (event.buttons !== 0 && pointerDeltaX * pointerDeltaX + pointerDeltaY * pointerDeltaY > 25) {
+    pointerGestureMoved = true;
+  }
+}
+
+function onPointerDown(event: PointerEvent): void {
+  if (event.button !== 0) return;
+  pointerDownClient.set(event.clientX, event.clientY);
+  pointerGestureMoved = false;
+  pointerGestureStartedOnGizmo = transformControls.axis !== null;
+}
+
+function onPointerUp(event: PointerEvent): void {
+  if (event.button !== 0 || currentScene.id !== 'material-study') return;
+  if (pointerGestureMoved || pointerGestureStartedOnGizmo || transformControls.dragging) return;
+  const bounds = renderer.domElement.getBoundingClientRect();
+  pointer.x = ((event.clientX - bounds.left) / bounds.width) * 2 - 1;
+  pointer.y = -((event.clientY - bounds.top) / bounds.height) * 2 + 1;
+  raycaster.setFromCamera(pointer, camera);
+  const hit = raycaster.intersectObjects(paintedObjects.map((object) => object.base), false)[0]?.object ?? null;
+  selectPaintedObject(hit);
 }
 
 function updateHover(): void {
@@ -826,9 +1023,62 @@ function setHover(object: THREE.Object3D | null): void {
   if (hoveredMesh === object) return;
   hoveredMesh = object;
   renderer.domElement.style.cursor = object ? 'crosshair' : 'grab';
-  const label = requiredElement<HTMLElement>('#object-label');
-  label.textContent = object?.userData.paintLabel ?? 'Left drag to orbit · right drag to pan · scroll to zoom';
-  label.classList.toggle('is-object', Boolean(object));
+  updateObjectLabel();
+}
+
+function selectPaintedObject(mesh: THREE.Object3D | null): void {
+  if (!mesh) {
+    clearSelection();
+    return;
+  }
+  const painted = paintedObjects.find((candidate) => candidate.base === mesh);
+  if (!painted) return;
+  selectedPaintedObject = painted;
+  transformControls.attach(painted.group);
+  const toolbar = requiredElement<HTMLElement>('#transform-toolbar');
+  toolbar.hidden = false;
+  requiredElement<HTMLElement>('#transform-object-name').textContent = painted.label;
+  updateTransformReadout();
+  updateObjectLabel();
+}
+
+function clearSelection(): void {
+  selectedPaintedObject = null;
+  transformControls.detach();
+  const toolbar = document.querySelector<HTMLElement>('#transform-toolbar');
+  if (toolbar) toolbar.hidden = true;
+  updateObjectLabel();
+}
+
+function setTransformMode(mode: TransformControlsMode): void {
+  transformControls.setMode(mode);
+  transformControls.setSpace(mode === 'translate' ? 'world' : 'local');
+  document.querySelectorAll<HTMLButtonElement>('[data-transform-mode]').forEach((button) => {
+    button.classList.toggle('is-active', button.dataset.transformMode === mode);
+  });
+}
+
+function updateTransformReadout(): void {
+  const output = document.querySelector<HTMLOutputElement>('#transform-position');
+  if (!output || !selectedPaintedObject) return;
+  const { x, y, z } = selectedPaintedObject.group.position;
+  output.value = `${x.toFixed(1)} ${y.toFixed(1)} ${z.toFixed(1)}`;
+}
+
+function updateObjectLabel(): void {
+  const label = document.querySelector<HTMLElement>('#object-label');
+  if (!label) return;
+  if (selectedPaintedObject) {
+    label.textContent = `${selectedPaintedObject.label} selected · W move · E rotate · R scale · Esc close`;
+    label.classList.add('is-object', 'is-selected');
+    return;
+  }
+  label.textContent = hoveredMesh?.userData.paintLabel
+    ?? (currentScene.id === 'material-study'
+      ? 'Click an object to move · drag to orbit · scroll to zoom'
+      : 'Left drag to orbit · right drag to pan · scroll to zoom');
+  label.classList.toggle('is-object', Boolean(hoveredMesh));
+  label.classList.remove('is-selected');
 }
 
 function focusHoveredObject(): void {
@@ -844,9 +1094,14 @@ function focusHoveredObject(): void {
 }
 
 function onKeyDown(event: KeyboardEvent): void {
+  if (event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement) return;
   if (event.key === '1') setCameraBookmark('near');
   if (event.key === '2') setCameraBookmark('design');
   if (event.key === '3') setCameraBookmark('far');
+  if (selectedPaintedObject && event.key.toLowerCase() === 'w') setTransformMode('translate');
+  if (selectedPaintedObject && event.key.toLowerCase() === 'e') setTransformMode('rotate');
+  if (selectedPaintedObject && event.key.toLowerCase() === 'r') setTransformMode('scale');
+  if (event.key === 'Escape') clearSelection();
   if (event.key.toLowerCase() === 'p') {
     paused = !paused;
     requiredElement<HTMLInputElement>('#pause-motion').checked = paused;
@@ -859,11 +1114,47 @@ function captureFrame(): void {
   renderer.domElement.toBlob((blob) => {
     if (!blob) return;
     const link = document.createElement('a');
-    link.download = `paint-shader-${currentPreset}-${activeTexture.metadata.seedHex}.png`;
+    link.download = `paint-shader-${currentScene.id}-${currentPreset}-${activeTexture.metadata.seedHex}.png`;
     link.href = URL.createObjectURL(blob);
     link.click();
     URL.revokeObjectURL(link.href);
   }, 'image/png');
+}
+
+function exportSettings(): void {
+  const preset = PRESETS[currentPreset];
+  const payload: PaintLabSettingsExport = {
+    format: 'paint-lab-settings',
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    threeRevision: THREE.REVISION,
+    scene: {
+      id: currentScene.id,
+      label: currentScene.label,
+    },
+    look: {
+      id: currentPreset,
+      label: preset.label,
+      palettes: preset.palettes,
+    },
+    paintTexture: activeTexture.metadata,
+    controls: readPainterlyControls(paintGlobals),
+  };
+  const blob = new Blob([`${JSON.stringify(payload, null, 2)}\n`], {
+    type: 'application/json',
+  });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.download = `paint-lab-${currentScene.id}-${currentPreset}-${activeTexture.metadata.seedHex}.json`;
+  link.href = url;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+
+  const button = requiredElement<HTMLButtonElement>('#export-settings');
+  button.textContent = 'JSON saved';
+  window.setTimeout(() => {
+    button.textContent = 'Export JSON';
+  }, 1400);
 }
 
 function applyTexturePreview(metadata: PaintTextureMetadata, debugMode: number): void {
@@ -887,7 +1178,7 @@ function applyTexturePreview(metadata: PaintTextureMetadata, debugMode: number):
         image.data.set([broad, broad, broad, 255], target);
       } else if (debugMode === 3 || debugMode === 6) {
         image.data.set([detail, detail, detail, 255], target);
-      } else if (debugMode === 7) {
+      } else if (debugMode === 7 || debugMode === 8) {
         image.data.set([broad, detail, Math.round((broad + detail) * 0.38), 255], target);
       } else {
         const normalX = r / 127.5 - 1;
@@ -907,8 +1198,12 @@ function animate(frameTime: number): void {
   const delta = Math.min(Math.max((frameTime - previousFrameTime) / 1000, 0), 0.05);
   previousFrameTime = frameTime;
   if (!paused) elapsedTime += delta;
+  if (!paused) {
+    for (const update of sceneFrameUpdaters) update(delta);
+  }
   if (!paused && autoRotate) {
     for (const object of animatedObjects) {
+      if (object === selectedPaintedObject) continue;
       object.group.rotation.x += object.spin.x * delta;
       object.group.rotation.y += object.spin.y * delta;
       object.group.rotation.z += object.spin.z * delta;
@@ -973,11 +1268,19 @@ function createInterfaceMarkup(): string {
         </div>
 
         <header class="brand">
-          <div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></div>
-          <div>
-            <p class="kicker">THREE.JS R185 · MATERIAL STUDY</p>
-            <h1>Paint / Lab</h1>
+          <div class="brand-lockup">
+            <div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></div>
+            <div>
+              <p class="kicker">THREE.JS R185 · MATERIAL STUDY</p>
+              <h1>Paint / Lab</h1>
+            </div>
           </div>
+          <label class="scene-picker" for="scene-select">
+            <span>Active scene</span>
+            <select id="scene-select" aria-label="Choose scene">
+              ${PAINT_SCENES.map((paintScene) => `<option value="${paintScene.id}">${paintScene.label}</option>`).join('')}
+            </select>
+          </label>
         </header>
 
         <div class="shot-caption">
@@ -991,6 +1294,15 @@ function createInterfaceMarkup(): string {
           <button type="button" data-camera="design" class="is-active"><span>02</span> Hero</button>
           <button type="button" data-camera="far"><span>03</span> Wide</button>
         </nav>
+
+        <div id="transform-toolbar" class="transform-toolbar" aria-label="Selected object tools" hidden>
+          <strong id="transform-object-name">Object</strong>
+          <output id="transform-position" aria-label="Object position">0.0 0.0 0.0</output>
+          <button type="button" data-transform-mode="translate" class="is-active">Move <kbd>W</kbd></button>
+          <button type="button" data-transform-mode="rotate">Rotate <kbd>E</kbd></button>
+          <button type="button" data-transform-mode="scale">Scale <kbd>R</kbd></button>
+          <button id="transform-close" type="button" aria-label="Close object gizmo">×</button>
+        </div>
 
         <div class="runtime-pill" aria-label="Runtime statistics">
           <span><b id="fps">60</b> FPS</span>
@@ -1016,6 +1328,9 @@ function createInterfaceMarkup(): string {
               <button type="button" data-preset="high-key"><i class="swatch high-key"></i>High key</button>
               <button type="button" data-preset="noir" class="is-active"><i class="swatch noir"></i>Noir</button>
               <button type="button" data-preset="ultraviolet"><i class="swatch ultraviolet"></i>UV</button>
+              <button type="button" data-preset="earthy"><i class="swatch earthy"></i>Earthy</button>
+              <button type="button" data-preset="sky"><i class="swatch sky"></i>Sky</button>
+              <button type="button" data-preset="verdant"><i class="swatch verdant"></i>Verdant</button>
             </div>
           </section>
 
@@ -1041,6 +1356,9 @@ function createInterfaceMarkup(): string {
             <summary><span>Oil &amp; relief</span><small>04</small></summary>
             ${rangeMarkup('Oil reflection', 'oil-strength', 'oilStrength', 0, 2.8, 0.01)}
             ${rangeMarkup('Reflection cut', 'oil-threshold', 'oilThreshold', -0.1, 0.9, 0.01)}
+            ${rangeMarkup('Native sheen', 'native-sheen', 'nativeSheen', 0, 0.5, 0.005)}
+            ${rangeMarkup('Highlight brush', 'highlight-brushiness', 'highlightBrushiness', 0, 1.5, 0.01)}
+            ${rangeMarkup('Highlight steps', 'highlight-steps', 'highlightSteps', 1, 5, 1)}
             ${rangeMarkup('Roughness breakup', 'roughness-variation', 'roughnessVariation', 0, 0.75, 0.01)}
             ${rangeMarkup('Painted rim', 'rim-strength', 'rimStrength', 0, 2, 0.02)}
             ${rangeMarkup('Rim falloff', 'rim-power', 'rimPower', 0.7, 5, 0.05)}
@@ -1052,19 +1370,25 @@ function createInterfaceMarkup(): string {
             ${rangeMarkup('Bristle reach', 'edge-bristle-reach', 'edgeBristleReach', 0, 1, 0.01)}
             ${rangeMarkup('Erosion texture', 'erosion-scale', 'erosionScale', 0, 0.8, 0.01)}
             ${rangeMarkup('Curvature guard', 'curvature-guard', 'curvatureGuard', 1, 20, 0.25)}
-            ${rangeMarkup('Shadow erosion', 'shadow-erosion', 'shadowErosion', 0, 1, 0.01)}
-            ${rangeMarkup('Shadow mask offset', 'shadow-mask-offset', 'shadowMaskOffset', -0.4, 0.6, 0.01)}
             ${rangeMarkup('Outer rim width', 'outer-rim-width', 'outerRimWidth', 0.002, 0.11, 0.002)}
             ${rangeMarkup('Rim continuity', 'rim-continuity', 'rimContinuity', 0, 1, 0.01)}
-            ${rangeMarkup('Outline width', 'outline-width', 'outlineWidth', 0.005, 0.24, 0.002)}
+            ${rangeMarkup('Outline width', 'outline-width', 'outlineWidth', 0.005, 0.24, 0.001)}
+            ${rangeMarkup('Width variation', 'outline-width-variation', 'outlineWidthVariation', 0, 1, 0.01)}
             ${rangeMarkup('Outline jitter', 'outline-jitter', 'outlineJitter', 0, 0.08, 0.002)}
             ${rangeMarkup('Loop separation', 'outline-separation', 'outlineSeparation', 1.05, 2.4, 0.01)}
             ${rangeMarkup('Loop breakup', 'outline-breakup', 'outlineBreakup', 0, 1, 0.01)}
             ${rangeMarkup('Loop stroke', 'outline-stroke-width', 'outlineStrokeWidth', 0.5, 3, 0.05)}
           </details>
 
+          <details open>
+            <summary><span>Stylized shadows</span><small>06</small></summary>
+            ${rangeMarkup('Shadow erosion', 'shadow-erosion', 'shadowErosion', 0, 1, 0.01)}
+            ${rangeMarkup('Mask cutoff', 'shadow-mask-offset', 'shadowMaskOffset', -0.4, 0.6, 0.01)}
+            ${rangeMarkup('Shadow brush scale', 'shadow-brush-scale', 'shadowBrushScale', 0.35, 1.6, 0.01)}
+          </details>
+
           <section class="diagnostics">
-            <div class="section-heading"><span>Diagnostics</span><small>06</small></div>
+            <div class="section-heading"><span>Diagnostics</span><small>07</small></div>
             <div class="texture-card">
               <canvas id="texture-preview" width="144" height="144"></canvas>
               <div>
@@ -1100,6 +1424,7 @@ function createInterfaceMarkup(): string {
 
         <footer class="panel-footer">
           <button id="reset-controls" type="button">Reset</button>
+          <button id="export-settings" type="button">Export JSON</button>
           <button id="capture-frame" class="primary-button" type="button">Capture PNG</button>
         </footer>
       </aside>
@@ -1128,6 +1453,8 @@ function rangeMarkup(
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
+    transformControls.detach();
+    transformControls.dispose();
     renderer.dispose();
     environmentTarget.dispose();
     activeTexture.texture.dispose();

@@ -8,7 +8,9 @@ export const PAINT_DEBUG_MODES = [
   'Toon bands',
   'Oil reflection',
   'Rim erosion',
+  'Shadow mask',
   'Edge layers',
+  'Source albedo',
 ] as const;
 
 export type PaintDebugMode = (typeof PAINT_DEBUG_MODES)[number];
@@ -30,6 +32,9 @@ export interface PaintGlobalUniforms {
   midtoneValue: PaintUniform;
   oilStrength: PaintUniform;
   oilThreshold: PaintUniform;
+  nativeSheen: PaintUniform;
+  highlightBrushiness: PaintUniform;
+  highlightSteps: PaintUniform;
   roughnessVariation: PaintUniform;
   rimStrength: PaintUniform;
   rimPower: PaintUniform;
@@ -39,6 +44,7 @@ export interface PaintGlobalUniforms {
   curvatureGuard: PaintUniform;
   shadowErosion: PaintUniform;
   shadowMaskOffset: PaintUniform;
+  shadowBrushScale: PaintUniform;
   debugMode: PaintUniform;
   outerRimWidth: PaintUniform;
   rimContinuity: PaintUniform;
@@ -47,6 +53,77 @@ export interface PaintGlobalUniforms {
   outlineSeparation: PaintUniform;
   outlineBreakup: PaintUniform;
   outlineStrokeWidth: PaintUniform;
+  outlineWidthVariation: PaintUniform;
+}
+
+/**
+ * Stable, JSON-safe controls that define the shared painterly treatment.
+ * Texture, light direction, and debug output are runtime inputs rather than
+ * authored slider values, so they are deliberately excluded.
+ */
+export const PAINTERLY_CONTROL_KEYS = [
+  'brushScale',
+  'parallaxDepth',
+  'normalStrength',
+  'strokeContrast',
+  'detailStrength',
+  'shadowThreshold',
+  'lightThreshold',
+  'bandSoftness',
+  'shadowValue',
+  'midtoneValue',
+  'oilStrength',
+  'oilThreshold',
+  'nativeSheen',
+  'highlightBrushiness',
+  'highlightSteps',
+  'roughnessVariation',
+  'rimStrength',
+  'rimPower',
+  'edgeErosion',
+  'edgeBristleReach',
+  'erosionScale',
+  'curvatureGuard',
+  'shadowErosion',
+  'shadowMaskOffset',
+  'shadowBrushScale',
+  'outerRimWidth',
+  'rimContinuity',
+  'outlineWidth',
+  'outlineJitter',
+  'outlineSeparation',
+  'outlineBreakup',
+  'outlineStrokeWidth',
+  'outlineWidthVariation',
+] as const satisfies readonly (keyof PaintGlobalUniforms)[];
+
+export type PainterlyControlKey = (typeof PAINTERLY_CONTROL_KEYS)[number];
+export type PainterlyControlValues = Record<PainterlyControlKey, number>;
+
+export function readPainterlyControls(
+  globals: PaintGlobalUniforms,
+): PainterlyControlValues {
+  const controls = {} as PainterlyControlValues;
+  for (const key of PAINTERLY_CONTROL_KEYS) {
+    const value = globals[key].value;
+    if (typeof value !== 'number') {
+      throw new Error(`Painterly control ${key} is not numeric.`);
+    }
+    controls[key] = value;
+  }
+  return controls;
+}
+
+export function applyPainterlyControls(
+  globals: PaintGlobalUniforms,
+  controls: Partial<PainterlyControlValues>,
+): void {
+  for (const key of PAINTERLY_CONTROL_KEYS) {
+    const value = controls[key];
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      globals[key].value = value;
+    }
+  }
 }
 
 export interface PaintPalette {
@@ -61,6 +138,12 @@ export interface PaintPalette {
 
 export interface PainterlyMaterialOptions {
   palette: PaintPalette;
+  surfaceColor?: THREE.ColorRepresentation;
+  surfaceMap?: THREE.Texture | null;
+  texturelessSurface?: boolean;
+  surfaceMapStrength?: number;
+  surfaceAlphaTest?: number;
+  sourceAlbedoWeight?: number;
   triplanarMacro?: boolean;
   objectTextureScale?: number;
   roughness?: number;
@@ -68,6 +151,7 @@ export interface PainterlyMaterialOptions {
   clearcoat?: number;
   clearcoatRoughness?: number;
   envMapIntensity?: number;
+  side?: THREE.Side;
 }
 
 interface CompiledShader {
@@ -85,12 +169,20 @@ export interface PainterlyMaterial extends THREE.MeshPhysicalMaterial {
     rim: PaintUniform;
   };
   paintProjectionScale: PaintUniform;
+  paintSurface: {
+    color: PaintUniform;
+    map: PaintUniform;
+    mapStrength: PaintUniform;
+    alphaTest: PaintUniform;
+    sourceAlbedoWeight: PaintUniform;
+  };
 }
 
 export interface PaintShellOptions {
   kind: 'rim' | 'outline';
   color: THREE.ColorRepresentation;
   widthMultiplier?: number;
+  objectWidthMultiplier?: number;
   coverageBias?: number;
   offsetDirection?: THREE.Vector2;
   offsetMultiplier?: number;
@@ -111,8 +203,13 @@ vec4 samplePaintTriplanar( vec3 coordinate, vec3 normalObject ) {
     + texture2D( uPaintMap, uvZ ) * weight.z;
 }
 
-vec4 samplePaintEdgeField( vec3 objectPosition, vec3 objectNormal, float phase ) {
-  vec3 coordinate = objectPosition * uObjectTextureScale * uBrushScale * 0.74;
+vec4 samplePaintEdgeFieldScaled(
+  vec3 objectPosition,
+  vec3 objectNormal,
+  float phase,
+  float scaleMultiplier
+) {
+  vec3 coordinate = objectPosition * uObjectTextureScale * uBrushScale * 0.74 * scaleMultiplier;
   coordinate += vec3( 0.173, 0.397, 0.619 ) * phase;
   vec4 broadSample = samplePaintTriplanar( coordinate, objectNormal );
   vec4 toothSample = samplePaintTriplanar(
@@ -120,6 +217,10 @@ vec4 samplePaintEdgeField( vec3 objectPosition, vec3 objectNormal, float phase )
     objectNormal
   );
   return vec4( broadSample.rg, broadSample.b, toothSample.a );
+}
+
+vec4 samplePaintEdgeField( vec3 objectPosition, vec3 objectNormal, float phase ) {
+  return samplePaintEdgeFieldScaled( objectPosition, objectNormal, phase, 1.0 );
 }
 
 float paintEdgeComb(
@@ -132,15 +233,32 @@ float paintEdgeComb(
   vec3 tangentAxis = normalize( vec3( 0.71, 1.93, -1.17 ) + objectNormal * 0.21 );
   float coordinate = dot( positionScaled, tangentAxis );
   float warp = ( edgePacked.r - 0.5 ) * 5.0 + ( edgePacked.g - 0.5 ) * 2.5;
-  float coarse = 0.5 + 0.5 * sin( coordinate * 37.0 + warp + phase * 7.13 );
-  float fine = 0.5 + 0.5 * sin( coordinate * 113.0 - warp * 0.73 + phase * 13.7 );
-  return clamp( pow( coarse, 2.2 ) * 0.68 + pow( fine, 4.0 ) * 0.48, 0.0, 1.0 );
+  float coarse = 0.5 + 0.5 * sin( coordinate * 12.0 + warp * 0.58 + phase * 5.17 );
+  float fine = 0.5 + 0.5 * sin( coordinate * 89.0 - warp * 0.81 + phase * 17.3 );
+  return clamp( pow( coarse, 1.45 ) * 0.74 + pow( fine, 6.0 ) * 0.34, 0.0, 1.0 );
 }
 
 float paintEdgeLoad( vec4 edgePacked, float comb ) {
   float carrier = smoothstep( 0.06, 0.42, edgePacked.b + edgePacked.a * 0.22 );
   float tooth = smoothstep( 0.12, 0.68, edgePacked.a + edgePacked.b * 0.28 );
   return clamp( carrier * mix( 0.72, 1.18, tooth ) + comb * 0.16, 0.0, 1.0 );
+}
+
+float paintShadowStrokeMask(
+  vec4 edgePacked,
+  float comb,
+  float lightFacing,
+  float maskOffset
+) {
+  float carrier = paintEdgeLoad( edgePacked, comb );
+  float depositedPaint = clamp(
+    carrier * 0.66 + edgePacked.b * 0.24 + edgePacked.a * 0.12 + comb * 0.18,
+    0.0,
+    1.0
+  );
+  depositedPaint *= mix( 0.42, 1.08, lightFacing );
+  float cutoff = 0.48 - maskOffset * 0.55;
+  return smoothstep( cutoff - 0.13, cutoff + 0.13, depositedPaint );
 }
 `;
 
@@ -155,8 +273,13 @@ varying vec3 vPaintObjectNormal;
 
 const fragmentPrelude = /* glsl */ `
 uniform sampler2D uPaintMap;
+uniform sampler2D uSurfaceMap;
 uniform vec3 uPaintDark;
 uniform vec3 uPaintLight;
+uniform vec3 uSurfaceColor;
+uniform float uSurfaceMapStrength;
+uniform float uSurfaceAlphaTest;
+uniform float uSourceAlbedoWeight;
 uniform vec3 uReflectionDark;
 uniform vec3 uReflectionLight;
 uniform vec3 uRimColor;
@@ -173,6 +296,9 @@ uniform float uShadowValue;
 uniform float uMidtoneValue;
 uniform float uOilStrength;
 uniform float uOilThreshold;
+uniform float uNativeSheen;
+uniform float uHighlightBrushiness;
+uniform float uHighlightSteps;
 uniform float uRoughnessVariation;
 uniform float uRimStrength;
 uniform float uRimPower;
@@ -180,6 +306,8 @@ uniform float uEdgeErosion;
 uniform float uEdgeBristleReach;
 uniform float uErosionScale;
 uniform float uCurvatureGuard;
+uniform float uShadowMaskOffset;
+uniform float uShadowBrushScale;
 uniform float uPaintDebugMode;
 uniform float uObjectTextureScale;
 
@@ -193,10 +321,35 @@ vec4 paintPacked = vec4( 0.5, 0.5, 0.5, 0.5 );
 vec3 paintResolvedNormalWorld = vec3( 0.0, 1.0, 0.0 );
 float paintToonBand = 1.0;
 float paintOilLobe = 0.0;
+float paintOilBand = 0.0;
+float paintOilCoverage = 0.0;
 float paintFresnel = 0.0;
 float paintErosionMask = 0.0;
+float paintShadowMask = 1.0;
+vec3 paintSourceAlbedo = vec3( 1.0 );
 
 ${edgeFieldFunctions}
+
+vec3 perturbPaintNormalFromHeight(
+  vec3 surfaceNormal,
+  vec3 worldPosition,
+  float heightField,
+  float strength
+) {
+  vec3 positionDx = dFdx( worldPosition );
+  vec3 positionDy = dFdy( worldPosition );
+  vec3 gradientAxisX = cross( positionDy, surfaceNormal );
+  vec3 gradientAxisY = cross( surfaceNormal, positionDx );
+  float determinant = dot( positionDx, gradientAxisX );
+  vec3 heightGradient = sign( determinant ) * (
+    dFdx( heightField ) * gradientAxisX
+    + dFdy( heightField ) * gradientAxisY
+  );
+  return normalize(
+    surfaceNormal
+    - heightGradient * ( strength / max( abs( determinant ), 1e-6 ) )
+  );
+}
 `;
 
 const paintSampling = /* glsl */ `
@@ -204,47 +357,135 @@ vec3 paintBaseNormal = normalize( vPaintGeometricNormalWorld );
 vec3 paintSmoothNormal = normalize( vPaintSmoothNormalWorld );
 vec3 paintViewDirection = normalize( cameraPosition - vPaintWorldPosition );
 
+vec3 paintObjectCoordinate = vPaintObjectPosition * uObjectTextureScale * uBrushScale;
 vec2 paintUv = vMapUv * uBrushScale;
-vec3 paintDp1 = dFdx( vPaintWorldPosition );
-vec3 paintDp2 = dFdy( vPaintWorldPosition );
-vec2 paintDuv1 = dFdx( paintUv );
-vec2 paintDuv2 = dFdy( paintUv );
-vec3 paintTangent = paintDp1 * paintDuv2.y - paintDp2 * paintDuv1.y;
-vec3 paintBitangent = - paintDp1 * paintDuv2.x + paintDp2 * paintDuv1.x;
-float paintTangentValid = step( 1e-8, dot( paintTangent, paintTangent ) * dot( paintBitangent, paintBitangent ) );
-paintTangent = normalize( mix( vec3( 1.0, 0.0, 0.0 ), paintTangent, paintTangentValid ) );
-paintBitangent = normalize( mix( vec3( 0.0, 1.0, 0.0 ), paintBitangent, paintTangentValid ) );
+vec2 paintParallaxUv = paintUv;
+vec3 paintTangent = vec3( 1.0, 0.0, 0.0 );
+vec3 paintBitangent = vec3( 0.0, 1.0, 0.0 );
 
-vec4 paintInitial = texture2D( uPaintMap, paintUv );
-float paintFacing = max( abs( dot( paintBaseNormal, paintViewDirection ) ), 0.18 );
-vec2 paintViewUv = vec2( dot( paintViewDirection, paintTangent ), dot( paintViewDirection, paintBitangent ) ) / paintFacing;
-vec2 paintParallaxUv = paintUv - paintViewUv * ( paintInitial.b - 0.5 ) * uParallaxDepth;
-paintPacked = texture2D( uPaintMap, paintParallaxUv );
+#ifdef PAINT_TEXTURELESS_SURFACE
+  vec3 paintReferenceAxis = abs( paintBaseNormal.y ) < 0.94
+    ? vec3( 0.0, 1.0, 0.0 )
+    : vec3( 1.0, 0.0, 0.0 );
+  paintTangent = normalize( cross( paintReferenceAxis, paintBaseNormal ) );
+  paintBitangent = normalize( cross( paintBaseNormal, paintTangent ) );
+  paintPacked = samplePaintTriplanar(
+    paintObjectCoordinate,
+    normalize( vPaintObjectNormal )
+  );
+  float paintProceduralHeight = paintPacked.b * 0.85 + paintPacked.a * 0.15;
+  paintResolvedNormalWorld = perturbPaintNormalFromHeight(
+    paintBaseNormal,
+    vPaintWorldPosition,
+    paintProceduralHeight,
+    uPaintNormalStrength * 0.05
+  );
+#else
+  vec3 paintDp1 = dFdx( vPaintWorldPosition );
+  vec3 paintDp2 = dFdy( vPaintWorldPosition );
+  vec2 paintDuv1 = dFdx( paintUv );
+  vec2 paintDuv2 = dFdy( paintUv );
+  paintTangent = paintDp1 * paintDuv2.y - paintDp2 * paintDuv1.y;
+  paintBitangent = - paintDp1 * paintDuv2.x + paintDp2 * paintDuv1.x;
+  float paintTangentValid = step(
+    1e-8,
+    dot( paintTangent, paintTangent ) * dot( paintBitangent, paintBitangent )
+  );
+  paintTangent = normalize( mix(
+    vec3( 1.0, 0.0, 0.0 ),
+    paintTangent,
+    paintTangentValid
+  ) );
+  paintBitangent = normalize( mix(
+    vec3( 0.0, 1.0, 0.0 ),
+    paintBitangent,
+    paintTangentValid
+  ) );
 
-#ifdef PAINT_TRIPLANAR_MACRO
-  vec3 paintObjectCoordinate = vPaintObjectPosition * uObjectTextureScale * uBrushScale;
-  vec4 paintTriplanarPacked = samplePaintTriplanar( paintObjectCoordinate, vPaintObjectNormal );
-  paintPacked.ba = paintTriplanarPacked.ba;
+  vec4 paintInitial = texture2D( uPaintMap, paintUv );
+  float paintFacing = max( abs( dot( paintBaseNormal, paintViewDirection ) ), 0.18 );
+  vec2 paintViewUv = vec2(
+    dot( paintViewDirection, paintTangent ),
+    dot( paintViewDirection, paintBitangent )
+  ) / paintFacing;
+  paintParallaxUv = paintUv
+    - paintViewUv * ( paintInitial.b - 0.5 ) * uParallaxDepth;
+  paintPacked = texture2D( uPaintMap, paintParallaxUv );
+
+  #ifdef PAINT_TRIPLANAR_MACRO
+    vec4 paintTriplanarPacked = samplePaintTriplanar(
+      paintObjectCoordinate,
+      vPaintObjectNormal
+    );
+    paintPacked.ba = paintTriplanarPacked.ba;
+  #endif
+
+  vec2 paintNormalXY = ( paintPacked.rg * 2.0 - 1.0 ) * uPaintNormalStrength;
+  vec3 paintTangentNormal = normalize( vec3( paintNormalXY, 0.95 ) );
+  vec3 paintMappedNormal = normalize(
+    paintTangent * paintTangentNormal.x
+    + paintBitangent * paintTangentNormal.y
+    + paintBaseNormal * paintTangentNormal.z
+  );
+  paintResolvedNormalWorld = normalize( mix(
+    paintBaseNormal,
+    paintMappedNormal,
+    uPaintNormalStrength
+  ) );
 #endif
-
-vec2 paintNormalXY = ( paintPacked.rg * 2.0 - 1.0 ) * uPaintNormalStrength;
-vec3 paintTangentNormal = normalize( vec3( paintNormalXY, 0.95 ) );
-vec3 paintMappedNormal = normalize(
-  paintTangent * paintTangentNormal.x +
-  paintBitangent * paintTangentNormal.y +
-  paintBaseNormal * paintTangentNormal.z
-);
-paintResolvedNormalWorld = normalize( mix( paintBaseNormal, paintMappedNormal, uPaintNormalStrength ) );
 
 float paintStroke = smoothstep(
   0.16 + ( 1.0 - uStrokeContrast ) * 0.22,
   0.84 - ( 1.0 - uStrokeContrast ) * 0.22,
   paintPacked.b
 );
-vec3 paintAlbedo = mix( uPaintDark, uPaintLight, paintStroke );
+vec4 paintSurfaceSample = texture2D( uSurfaceMap, vMapUv );
+if ( uSurfaceAlphaTest > 0.0 && paintSurfaceSample.a < uSurfaceAlphaTest ) discard;
+vec3 paintSurfaceTexel = paintSurfaceSample.rgb;
+paintSourceAlbedo = uSurfaceColor * mix(
+  vec3( 1.0 ),
+  paintSurfaceTexel,
+  saturate( uSurfaceMapStrength )
+);
+vec3 paintPaletteAlbedo = mix( uPaintDark, uPaintLight, paintStroke );
+vec3 paintSourceStrokes = paintSourceAlbedo * mix( 0.58, 1.18, paintStroke );
+#ifdef PAINT_TEXTURELESS_SURFACE
+  float paintPigmentGranulation = ( paintPacked.a - 0.5 ) * 0.22
+    + ( paintPacked.b - 0.5 ) * 0.12;
+  float paintPigmentDeposit = smoothstep(
+    0.18,
+    0.82,
+    paintPacked.b * 0.72 + paintPacked.a * 0.28
+  );
+  paintSourceStrokes *= 1.0 + paintPigmentGranulation;
+  paintSourceStrokes = mix(
+    paintSourceStrokes,
+    paintPaletteAlbedo,
+    0.10 + paintPigmentDeposit * 0.16
+  );
+#endif
+vec3 paintAlbedo = mix(
+  paintPaletteAlbedo,
+  paintSourceStrokes,
+  saturate( uSourceAlbedoWeight )
+);
 
-float paintNdotL = dot( paintResolvedNormalWorld, normalize( uPaintLightDirection ) );
-float paintBandNoise = ( paintPacked.a - 0.5 ) * uDetailStrength * 0.24;
+vec3 paintBandNormal = paintResolvedNormalWorld;
+#ifdef PAINT_TEXTURELESS_SURFACE
+  paintBandNormal = normalize( mix(
+    paintBaseNormal,
+    paintResolvedNormalWorld,
+    0.14
+  ) );
+#endif
+float paintNdotL = dot( paintBandNormal, normalize( uPaintLightDirection ) );
+float paintBandNoiseScale = 0.24;
+#ifdef PAINT_TEXTURELESS_SURFACE
+  paintBandNoiseScale = 0.015;
+#endif
+float paintBandNoise = ( paintPacked.a - 0.5 )
+  * uDetailStrength
+  * paintBandNoiseScale;
 float paintMidBand = smoothstep(
   uShadowThreshold - uBandSoftness,
   uShadowThreshold + uBandSoftness,
@@ -259,17 +500,88 @@ paintToonBand = mix( uShadowValue, uMidtoneValue, paintMidBand );
 paintToonBand = mix( paintToonBand, 1.0, paintLightBand );
 diffuseColor.rgb = paintAlbedo * paintToonBand;
 
-vec2 paintReflectionUv = paintParallaxUv.yx;
-vec4 paintReflectionPacked = texture2D( uPaintMap, paintReflectionUv );
-vec2 paintReflectionXY = ( paintReflectionPacked.rg * 2.0 - 1.0 ) * ( 0.55 + 0.65 * uPaintNormalStrength );
+float paintReflectionOffset = 0.055;
+vec4 paintReflectionPacked;
+float paintReflectionBroadX;
+float paintReflectionBroadY;
+#ifdef PAINT_TEXTURELESS_SURFACE
+  vec3 paintReflectionCoordinate = paintObjectCoordinate.yzx
+    + vec3( 0.317, 0.113, 0.491 );
+  vec3 paintReflectionNormalObject = normalize( vPaintObjectNormal.yzx );
+  paintReflectionPacked = samplePaintTriplanar(
+    paintReflectionCoordinate,
+    paintReflectionNormalObject
+  );
+  paintReflectionBroadX = samplePaintTriplanar(
+    paintReflectionCoordinate + vec3( paintReflectionOffset, 0.0, 0.0 ),
+    paintReflectionNormalObject
+  ).b;
+  paintReflectionBroadY = samplePaintTriplanar(
+    paintReflectionCoordinate + vec3( 0.0, paintReflectionOffset, 0.0 ),
+    paintReflectionNormalObject
+  ).b;
+#else
+  vec2 paintReflectionUv = paintParallaxUv.yx;
+  paintReflectionPacked = texture2D( uPaintMap, paintReflectionUv );
+  paintReflectionBroadX = texture2D(
+    uPaintMap,
+    paintReflectionUv + vec2( paintReflectionOffset, 0.0 )
+  ).b;
+  paintReflectionBroadY = texture2D(
+    uPaintMap,
+    paintReflectionUv + vec2( 0.0, paintReflectionOffset )
+  ).b;
+#endif
+vec2 paintReflectionSlope = vec2(
+  paintReflectionBroadX - paintReflectionPacked.b,
+  paintReflectionBroadY - paintReflectionPacked.b
+) * uHighlightBrushiness * 0.22;
 vec3 paintReflectionNormal = normalize(
-  paintTangent * paintReflectionXY.x +
-  paintBitangent * paintReflectionXY.y +
-  paintBaseNormal * 0.95
+  paintTangent * paintReflectionSlope.x +
+  paintBitangent * paintReflectionSlope.y +
+  paintSmoothNormal
 );
-vec3 paintReflectionVector = reflect( - paintViewDirection, paintReflectionNormal );
-float paintReflectionDot = saturate( dot( paintReflectionVector, normalize( uPaintLightDirection ) ) );
-paintOilLobe = step( uOilThreshold, paintReflectionDot );
+vec3 paintReflectionLight = normalize( uPaintLightDirection );
+vec3 paintReflectionHalf = normalize( paintReflectionLight + paintViewDirection );
+float paintReflectionDot = saturate( dot( paintReflectionNormal, paintReflectionHalf ) );
+float paintReflectionNdotL = dot( paintReflectionNormal, paintReflectionLight );
+float paintReflectionCarrier = smoothstep(
+  0.06,
+  0.62,
+  paintReflectionPacked.b + paintReflectionPacked.a * 0.2
+);
+float paintReflectionSignal = saturate(
+  paintReflectionDot
+  + ( paintReflectionCarrier - 0.5 ) * uHighlightBrushiness * 0.085
+  + ( paintReflectionPacked.a - 0.5 ) * uHighlightBrushiness * 0.025
+);
+float paintReflectionRange = max( 1.0 - uOilThreshold, 0.001 );
+float paintReflectionNormalized = saturate(
+  ( paintReflectionSignal - uOilThreshold ) / paintReflectionRange
+);
+paintReflectionNormalized = pow( paintReflectionNormalized, 1.25 );
+float paintReflectionSteps = max( floor( uHighlightSteps + 0.5 ), 1.0 );
+float paintReflectionAA = max( fwidth( paintReflectionSignal ) * 1.25, 0.008 );
+paintOilLobe = smoothstep(
+  uOilThreshold - paintReflectionAA,
+  uOilThreshold + paintReflectionAA,
+  paintReflectionSignal
+);
+paintOilBand = clamp(
+  floor( paintReflectionNormalized * ( paintReflectionSteps - 1.0 ) + 0.5 )
+  / max( paintReflectionSteps - 1.0, 1.0 ),
+  0.0,
+  1.0
+);
+float paintReflectionBoundary = 1.0 - smoothstep(
+  0.0,
+  0.22,
+  paintReflectionNormalized
+);
+float paintReflectionDryEdge = mix( 0.72, 1.0, paintReflectionCarrier );
+paintOilCoverage = paintOilLobe
+  * mix( 1.0, paintReflectionDryEdge, paintReflectionBoundary )
+  * smoothstep( -0.08, 0.18, paintReflectionNdotL );
 
 paintFresnel = pow( 1.0 - saturate( abs( dot( paintSmoothNormal, paintViewDirection ) ) ), uRimPower );
 float paintCurvature = length( fwidth( paintSmoothNormal ) ) * uCurvatureGuard;
@@ -286,36 +598,68 @@ float paintComb = paintEdgeComb(
   0.0
 );
 float paintLoad = paintEdgeLoad( paintEdgePacked, paintComb );
-float paintCombTip = smoothstep( 0.30, 0.68, paintComb );
+float paintCombTip = smoothstep( 0.26, 0.72, paintComb );
 float paintEdgeDistance = abs( dot( paintSmoothNormal, paintViewDirection ) );
-float paintBaseReach = mix( 0.025, 0.34, saturate( uEdgeBristleReach ) );
-float paintTexturedReach = paintBaseReach * mix(
-  1.0 - uErosionScale * 0.62,
-  1.0 + uErosionScale * 0.34,
-  paintLoad
-);
-paintTexturedReach *= mix( 0.62, 1.42, paintCombTip );
-paintTexturedReach = min( paintTexturedReach, 0.38 );
+float paintBaseReach = mix( 0.018, 0.30, saturate( uEdgeBristleReach ) );
+float paintTexturedReach = paintBaseReach * mix( 0.42, 1.38, paintCombTip );
+paintTexturedReach *= mix( 0.82, 1.18, paintLoad * uErosionScale );
+paintTexturedReach = min( paintTexturedReach, 0.36 );
 float paintEdgeAA = max( fwidth( paintEdgeDistance ) * 1.5, 0.006 );
-paintErosionMask = (
+float paintSilhouetteZone = (
   1.0 - smoothstep(
     paintTexturedReach - paintEdgeAA,
     paintTexturedReach + paintEdgeAA,
     paintEdgeDistance
   )
-) * paintCurvedSurface * saturate( uEdgeErosion );
+);
+float paintDryGap = 1.0 - smoothstep( 0.18, 0.74, paintLoad + paintCombTip * 0.16 );
+paintDryGap = clamp( paintDryGap + ( 1.0 - paintCombTip ) * uErosionScale * 0.28, 0.0, 1.0 );
+paintErosionMask = paintSilhouetteZone
+  * paintDryGap
+  * paintCurvedSurface
+  * saturate( uEdgeErosion );
+
+vec4 paintShadowPacked = samplePaintEdgeFieldScaled(
+  vPaintObjectPosition,
+  vPaintObjectNormal,
+  3.71,
+  uShadowBrushScale
+);
+float paintShadowComb = paintEdgeComb(
+  vPaintObjectPosition,
+  vPaintObjectNormal,
+  paintShadowPacked,
+  3.71
+);
+float paintShadowFacing = pow(
+  abs( dot( paintSmoothNormal, normalize( uPaintLightDirection ) ) ),
+  2.0
+);
+float paintShadowCurvature = length( fwidth( paintSmoothNormal ) );
+float paintShadowFlatPreserve = 1.0 - smoothstep( 0.00002, 0.0004, paintShadowCurvature );
+paintShadowMask = max(
+  paintShadowFlatPreserve,
+  paintShadowStrokeMask(
+    paintShadowPacked,
+    paintShadowComb,
+    paintShadowFacing,
+    uShadowMaskOffset
+  )
+);
 
 if ( uPaintDebugMode < 0.5 && paintErosionMask > 0.5 ) discard;
 `;
 
 const paintOutput = /* glsl */ `
-float paintReflectionRamp = clamp(
-  ( floor( 2.0 * pow( paintReflectionDot, 4.0 ) + 0.5 ) * 0.5 - 0.5 ) * 2.0,
-  -0.25,
-  1.0
-);
-vec3 paintOilColor = mix( uReflectionDark, uReflectionLight, paintReflectionRamp );
-outgoingLight += paintOilColor * paintOilLobe * uOilStrength;
+vec3 paintNativeLighting = outgoingLight;
+vec3 paintMatteLighting = totalDiffuse + totalEmissiveRadiance;
+outgoingLight = mix( paintMatteLighting, paintNativeLighting, saturate( uNativeSheen ) );
+
+vec3 paintOilColor = mix( uReflectionDark, uReflectionLight, paintOilBand );
+vec3 paintOilTarget = mix( diffuseColor.rgb, paintOilColor, 0.72 )
+  * mix( 0.72, 1.18, paintOilBand );
+float paintOilOpacity = min( saturate( paintOilCoverage * uOilStrength ), 0.86 );
+outgoingLight = mix( outgoingLight, paintOilTarget, paintOilOpacity );
 
 float paintRimMask = paintFresnel * mix( 0.35, 1.0, paintPacked.a );
 outgoingLight += uRimColor * paintRimMask * uRimStrength;
@@ -329,11 +673,15 @@ if ( uPaintDebugMode > 0.5 && uPaintDebugMode < 1.5 ) {
 } else if ( uPaintDebugMode < 4.5 && uPaintDebugMode > 3.5 ) {
   outgoingLight = vec3( paintToonBand );
 } else if ( uPaintDebugMode < 5.5 && uPaintDebugMode > 4.5 ) {
-  outgoingLight = paintOilColor * paintOilLobe * 2.0;
+  outgoingLight = paintOilTarget * paintOilCoverage;
 } else if ( uPaintDebugMode > 5.5 && uPaintDebugMode < 6.5 ) {
   outgoingLight = vec3( paintErosionMask );
-} else if ( uPaintDebugMode > 6.5 ) {
+} else if ( uPaintDebugMode > 6.5 && uPaintDebugMode < 7.5 ) {
+  outgoingLight = vec3( paintShadowMask );
+} else if ( uPaintDebugMode > 7.5 && uPaintDebugMode < 8.5 ) {
   outgoingLight = mix( vec3( 0.035, 0.045, 0.06 ), vec3( 1.0, 0.14, 0.025 ), paintErosionMask );
+} else if ( uPaintDebugMode > 8.5 ) {
+  outgoingLight = paintSourceAlbedo;
 }
 `;
 
@@ -341,7 +689,7 @@ export function createPaintGlobalUniforms(texture: THREE.Texture): PaintGlobalUn
   return {
     paintMap: { value: texture },
     lightDirection: { value: new THREE.Vector3(-0.45, 0.82, 0.34).normalize() },
-    brushScale: { value: 3.25 },
+    brushScale: { value: 0.7 },
     parallaxDepth: { value: 0.048 },
     normalStrength: { value: 0.9 },
     strokeContrast: { value: 0.9 },
@@ -351,25 +699,30 @@ export function createPaintGlobalUniforms(texture: THREE.Texture): PaintGlobalUn
     bandSoftness: { value: 0.01 },
     shadowValue: { value: 0 },
     midtoneValue: { value: 0.25 },
-    oilStrength: { value: 0.85 },
-    oilThreshold: { value: 0.5 },
+    oilStrength: { value: 0.68 },
+    oilThreshold: { value: 0.68 },
+    nativeSheen: { value: 0 },
+    highlightBrushiness: { value: 0.82 },
+    highlightSteps: { value: 3 },
     roughnessVariation: { value: 0.36 },
     rimStrength: { value: 0.9 },
     rimPower: { value: 5 },
-    edgeErosion: { value: 0.68 },
-    edgeBristleReach: { value: 0.66 },
-    erosionScale: { value: 0.58 },
+    edgeErosion: { value: 0.82 },
+    edgeBristleReach: { value: 0.76 },
+    erosionScale: { value: 0.66 },
     curvatureGuard: { value: 8.0 },
     shadowErosion: { value: 1 },
-    shadowMaskOffset: { value: 0 },
+    shadowMaskOffset: { value: -0.05 },
+    shadowBrushScale: { value: 0.72 },
     debugMode: { value: 0 },
-    outerRimWidth: { value: 0.06 },
-    rimContinuity: { value: 0.9 },
-    outlineWidth: { value: 0.128 },
-    outlineJitter: { value: 0.046 },
-    outlineSeparation: { value: 1.72 },
-    outlineBreakup: { value: 0.48 },
-    outlineStrokeWidth: { value: 1.55 },
+    outerRimWidth: { value: 0.002 },
+    rimContinuity: { value: 0.84 },
+    outlineWidth: { value: 0.028 },
+    outlineJitter: { value: 0.036 },
+    outlineSeparation: { value: 1.55 },
+    outlineBreakup: { value: 0.62 },
+    outlineStrokeWidth: { value: 2.15 },
+    outlineWidthVariation: { value: 0.82 },
   };
 }
 
@@ -378,8 +731,10 @@ function bindUniforms(
   globals: PaintGlobalUniforms,
   palette: PainterlyMaterial['paintPalette'],
   projectionScale: PaintUniform,
+  surface: PainterlyMaterial['paintSurface'],
 ): void {
   shaderUniforms.uPaintMap = globals.paintMap;
+  shaderUniforms.uSurfaceMap = surface.map;
   shaderUniforms.uPaintLightDirection = globals.lightDirection;
   shaderUniforms.uBrushScale = globals.brushScale;
   shaderUniforms.uParallaxDepth = globals.parallaxDepth;
@@ -393,6 +748,9 @@ function bindUniforms(
   shaderUniforms.uMidtoneValue = globals.midtoneValue;
   shaderUniforms.uOilStrength = globals.oilStrength;
   shaderUniforms.uOilThreshold = globals.oilThreshold;
+  shaderUniforms.uNativeSheen = globals.nativeSheen;
+  shaderUniforms.uHighlightBrushiness = globals.highlightBrushiness;
+  shaderUniforms.uHighlightSteps = globals.highlightSteps;
   shaderUniforms.uRoughnessVariation = globals.roughnessVariation;
   shaderUniforms.uRimStrength = globals.rimStrength;
   shaderUniforms.uRimPower = globals.rimPower;
@@ -400,10 +758,16 @@ function bindUniforms(
   shaderUniforms.uEdgeBristleReach = globals.edgeBristleReach;
   shaderUniforms.uErosionScale = globals.erosionScale;
   shaderUniforms.uCurvatureGuard = globals.curvatureGuard;
+  shaderUniforms.uShadowMaskOffset = globals.shadowMaskOffset;
+  shaderUniforms.uShadowBrushScale = globals.shadowBrushScale;
   shaderUniforms.uPaintDebugMode = globals.debugMode;
   shaderUniforms.uObjectTextureScale = projectionScale;
   shaderUniforms.uPaintDark = palette.dark;
   shaderUniforms.uPaintLight = palette.light;
+  shaderUniforms.uSurfaceColor = surface.color;
+  shaderUniforms.uSurfaceMapStrength = surface.mapStrength;
+  shaderUniforms.uSurfaceAlphaTest = surface.alphaTest;
+  shaderUniforms.uSourceAlbedoWeight = surface.sourceAlbedoWeight;
   shaderUniforms.uReflectionDark = palette.reflectionDark;
   shaderUniforms.uReflectionLight = palette.reflectionLight;
   shaderUniforms.uRimColor = palette.rim;
@@ -416,12 +780,12 @@ export function createPainterlyMaterial(
   const material = new THREE.MeshPhysicalMaterial({
     color: 0xffffff,
     map: globals.paintMap.value as THREE.Texture,
-    roughness: options.roughness ?? 0.47,
-    metalness: options.metalness ?? 0.2,
-    clearcoat: options.clearcoat ?? 0.42,
-    clearcoatRoughness: options.clearcoatRoughness ?? 0.28,
-    envMapIntensity: options.envMapIntensity ?? 0.7,
-    side: THREE.FrontSide,
+    roughness: Math.max(options.roughness ?? 0.47, 0.82),
+    metalness: 0,
+    clearcoat: 0,
+    clearcoatRoughness: 1,
+    envMapIntensity: Math.min(options.envMapIntensity ?? 0.7, 0.18),
+    side: options.side ?? THREE.FrontSide,
   }) as PainterlyMaterial;
 
   material.paintPalette = {
@@ -432,12 +796,29 @@ export function createPainterlyMaterial(
     rim: { value: new THREE.Color(options.palette.rim) },
   };
   material.paintProjectionScale = { value: options.objectTextureScale ?? 0.26 };
-  if (options.triplanarMacro) {
-    material.defines = { ...material.defines, PAINT_TRIPLANAR_MACRO: 1 };
+  material.paintSurface = {
+    color: { value: new THREE.Color(options.surfaceColor ?? 0xffffff) },
+    map: { value: options.surfaceMap ?? globals.paintMap.value },
+    mapStrength: { value: options.surfaceMap ? options.surfaceMapStrength ?? 1 : 0 },
+    alphaTest: { value: options.surfaceAlphaTest ?? 0 },
+    sourceAlbedoWeight: { value: options.sourceAlbedoWeight ?? 0 },
+  };
+  if (options.triplanarMacro || options.texturelessSurface) {
+    material.defines = {
+      ...material.defines,
+      ...(options.triplanarMacro ? { PAINT_TRIPLANAR_MACRO: 1 } : {}),
+      ...(options.texturelessSurface ? { PAINT_TEXTURELESS_SURFACE: 1 } : {}),
+    };
   }
 
   material.onBeforeCompile = (shader: CompiledShader) => {
-    bindUniforms(shader.uniforms, globals, material.paintPalette, material.paintProjectionScale);
+    bindUniforms(
+      shader.uniforms,
+      globals,
+      material.paintPalette,
+      material.paintProjectionScale,
+      material.paintSurface,
+    );
 
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', `#include <common>\n${vertexPrelude}`)
@@ -445,10 +826,18 @@ export function createPainterlyMaterial(
         '#include <worldpos_vertex>',
         `#include <worldpos_vertex>
         vPaintWorldPosition = ( modelMatrix * vec4( transformed, 1.0 ) ).xyz;
-        vPaintGeometricNormalWorld = normalize( mat3( modelMatrix ) * normal );
-        vPaintSmoothNormalWorld = normalize( mat3( modelMatrix ) * aSmoothNormal );
         vPaintObjectPosition = transformed;
-        vPaintObjectNormal = normalize( normal );`,
+        #ifdef USE_SKINNING
+          vPaintGeometricNormalWorld = normalize(
+            inverseTransformDirection( transformedNormal, viewMatrix )
+          );
+          vPaintSmoothNormalWorld = vPaintGeometricNormalWorld;
+          vPaintObjectNormal = normalize( objectNormal );
+        #else
+          vPaintGeometricNormalWorld = normalize( mat3( modelMatrix ) * normal );
+          vPaintSmoothNormalWorld = normalize( mat3( modelMatrix ) * aSmoothNormal );
+          vPaintObjectNormal = normalize( normal );
+        #endif`,
       );
 
     shader.fragmentShader = shader.fragmentShader
@@ -461,7 +850,14 @@ export function createPainterlyMaterial(
           roughnessFactor + ( paintPacked.a - 0.5 ) * uRoughnessVariation,
           0.08,
           0.98
-        );`,
+        );
+        #ifdef PAINT_TEXTURELESS_SURFACE
+          roughnessFactor = clamp(
+            roughnessFactor + ( 0.5 - paintStroke ) * 0.12,
+            0.16,
+            0.98
+          );
+        #endif`,
       )
       .replace(
         '#include <normal_fragment_maps>',
@@ -471,15 +867,22 @@ export function createPainterlyMaterial(
       .replace('#include <opaque_fragment>', `${paintOutput}\n#include <opaque_fragment>`);
   };
 
-  material.customProgramCacheKey = () => 'painterly-physical-v4';
+  material.customProgramCacheKey = () => [
+    'painterly-physical-v7',
+    options.triplanarMacro ? 'macro' : 'uv',
+    options.texturelessSurface ? 'textureless' : 'textured',
+  ].join('-');
   return material;
 }
 
 const shellVertexShader = /* glsl */ `
+#include <common>
+#include <skinning_pars_vertex>
 attribute vec3 aSmoothNormal;
 uniform sampler2D uPaintMap;
 uniform float uShellWidth;
 uniform float uWidthMultiplier;
+uniform float uObjectWidthMultiplier;
 uniform float uOffsetScale;
 uniform float uOffsetMultiplier;
 uniform vec2 uOffsetDirection;
@@ -489,40 +892,110 @@ uniform float uShellLayer;
 uniform float uShellPhase;
 uniform float uEdgeBristleReach;
 uniform float uOutlineBreakup;
+uniform float uOutlineWidthVariation;
+uniform vec2 uViewportSize;
 varying vec2 vShellUv;
 varying vec3 vShellObjectPosition;
 varying vec3 vShellObjectNormal;
 varying vec3 vShellViewPosition;
 varying vec3 vShellViewNormal;
+varying float vShellWidthField;
+varying float vShellBrushLoad;
 
 ${edgeFieldFunctions}
 
 void main() {
-  vShellUv = uv;
-  vShellObjectPosition = position;
-  vShellObjectNormal = normalize( aSmoothNormal );
+  vec3 paintShellPosition = position;
+  vec3 paintShellNormal = aSmoothNormal;
+  #ifdef USE_SKINNING
+    #include <skinbase_vertex>
+    vec3 objectNormal = paintShellNormal;
+    #include <skinnormal_vertex>
+    vec3 transformed = paintShellPosition;
+    #include <skinning_vertex>
+    paintShellPosition = transformed;
+    paintShellNormal = objectNormal;
+  #endif
 
-  vec4 edgePacked = samplePaintEdgeField( position, aSmoothNormal, uShellPhase );
-  float comb = paintEdgeComb( position, aSmoothNormal, edgePacked, uShellPhase );
+  vShellUv = uv;
+  vShellObjectPosition = paintShellPosition;
+  vShellObjectNormal = normalize( paintShellNormal );
+
+  vec4 edgePacked = samplePaintEdgeField( paintShellPosition, paintShellNormal, uShellPhase );
+  float comb = paintEdgeComb( paintShellPosition, paintShellNormal, edgePacked, uShellPhase );
   float edgeLoad = paintEdgeLoad( edgePacked, comb );
   float combTip = smoothstep( 0.36, 0.64, comb );
   float isRim = 1.0 - step( 0.5, uShellLayer );
   float rimInflation = 0.34 + edgeLoad * 0.58;
   rimInflation += combTip * ( 0.56 + edgeLoad * 0.78 );
-  float loopField = clamp( edgePacked.b * 0.55 + combTip * 0.45, 0.0, 1.0 );
-  float loopInflation = mix( 0.76, 1.24, loopField );
+  float loopField = clamp(
+    edgePacked.b * 0.58 + edgeLoad * 0.30 + combTip * 0.24,
+    0.0,
+    1.0
+  );
+  float loopRamp = smoothstep( 0.10, 0.88, loopField );
+  float loopMinimum = mix( 1.0, 0.28, uOutlineWidthVariation );
+  float loopMaximum = mix( 1.0, 1.78, uOutlineWidthVariation );
+  float loopInflation = mix( loopMinimum, loopMaximum, loopRamp );
+  loopInflation += ( combTip - 0.5 ) * 0.24 * uOutlineWidthVariation;
   float rimBristleAmount = uEdgeBristleReach * 0.88;
   float loopWobbleAmount = mix( 0.45, 0.88, uOutlineBreakup );
   float bristleAmount = mix( loopWobbleAmount, rimBristleAmount, isRim );
   float inflation = mix( 1.0, mix( loopInflation, rimInflation, isRim ), bristleAmount );
+  inflation = max( inflation, 0.18 );
+  vShellWidthField = inflation;
+  vShellBrushLoad = edgeLoad;
 
-  vec3 expanded = position
-    + normalize( aSmoothNormal ) * uShellWidth * uWidthMultiplier * inflation;
-  vec4 viewPosition = modelViewMatrix * vec4( expanded, 1.0 );
-  viewPosition.xy += uOffsetDirection * uOffsetScale * uOffsetMultiplier;
+  vec4 viewPosition = modelViewMatrix * vec4( paintShellPosition, 1.0 );
+  vec3 viewNormal = normalize( normalMatrix * paintShellNormal );
+  vec4 baseClip = projectionMatrix * viewPosition;
+
+  // Find the outward silhouette direction after projection. The probe is used
+  // only to establish direction; the final vertex keeps the source surface's
+  // clip-space depth so the outline cannot balloon toward the camera.
+  vec4 normalProbeClip = projectionMatrix * vec4(
+    viewPosition.xyz + viewNormal,
+    1.0
+  );
+  vec2 baseNdc = baseClip.xy / max( abs( baseClip.w ), 1e-6 );
+  vec2 normalProbeNdc = normalProbeClip.xy
+    / max( abs( normalProbeClip.w ), 1e-6 );
+  vec2 projectedNormal = normalProbeNdc - baseNdc;
+  float projectedNormalLength = length( projectedNormal );
+  vec2 fallbackDirection = normalize( viewNormal.xy + vec2( 1e-6, 0.0 ) );
+  vec2 outwardNdc = projectedNormalLength > 1e-6
+    ? projectedNormal / projectedNormalLength
+    : fallbackDirection;
+
+  // Resolve the projected normal in the viewport's pixel metric. This makes
+  // one authored shell width mean the same thing for a large building, a thin
+  // branch, and a scaled or skinned character.
+  vec2 safeViewport = max( uViewportSize, vec2( 1.0 ) );
+  vec2 outwardPixels = normalize( outwardNdc * safeViewport );
+  vec2 pixelStepNdc = outwardPixels * 2.0 / safeViewport;
+
+  const float shellPixelsPerWidthUnit = 200.0;
+  float baseShellPixels = uShellWidth
+    * uWidthMultiplier
+    * uObjectWidthMultiplier
+    * inflation
+    * shellPixelsPerWidthUnit;
+
+  // Offset-loop character now changes only the outward reach. The model
+  // silhouette remains the shared inner boundary instead of the entire shell
+  // translating away from it.
+  float directionalReachPixels = dot( outwardPixels, uOffsetDirection )
+    * uOffsetScale
+    * uOffsetMultiplier
+    * shellPixelsPerWidthUnit;
+  float shellPixels = max( baseShellPixels + directionalReachPixels, 0.0 );
+
+  // Only X/Y dilate. Keeping the original Z/W anchors depth and lets the base
+  // mesh mask the inner half of the back-face shell as a true contour.
+  baseClip.xy += pixelStepNdc * shellPixels * baseClip.w;
   vShellViewPosition = - viewPosition.xyz;
-  vShellViewNormal = normalize( normalMatrix * aSmoothNormal );
-  gl_Position = projectionMatrix * viewPosition;
+  vShellViewNormal = viewNormal;
+  gl_Position = baseClip;
 }
 `;
 
@@ -543,11 +1016,16 @@ varying vec3 vShellObjectPosition;
 varying vec3 vShellObjectNormal;
 varying vec3 vShellViewPosition;
 varying vec3 vShellViewNormal;
+varying float vShellWidthField;
+varying float vShellBrushLoad;
 
 ${edgeFieldFunctions}
 
 void main() {
-  if ( uPaintDebugMode > 0.5 && uPaintDebugMode < 6.5 ) discard;
+  if (
+    uPaintDebugMode > 0.5
+    && ( uPaintDebugMode < 7.5 || uPaintDebugMode > 8.5 )
+  ) discard;
 
   vec4 strokes = samplePaintEdgeField(
     vShellObjectPosition,
@@ -571,18 +1049,27 @@ void main() {
   vec3 viewDirection = normalize( vShellViewPosition );
   float contourDistance = abs( dot( viewNormal, viewDirection ) );
   float contourPixel = max( fwidth( contourDistance ), 0.0001 );
-  float contourWobble = ( strokes.a - 0.5 ) * 1.15 + ( combTip - 0.5 ) * 0.9;
-  float outlineDistance = max(
-    contourDistance + contourPixel * contourWobble * uOutlineBreakup * 1.7,
-    0.0
+  float outlineInk = smoothstep(
+    0.10,
+    0.64,
+    strokes.b * 0.68 + strokes.a * 0.20 + combTip * 0.28 + uCoverageBias
   );
-  float contour = 1.0 - smoothstep(
-    contourPixel * 0.2,
-    contourPixel * ( uOutlineStrokeWidth + 0.8 ),
-    outlineDistance
-  );
-  float outlineInk = smoothstep( 0.04, 0.28, strokes.b + strokes.a * 0.28 + uCoverageBias );
   float outlineContinuity = mix( 1.0, outlineInk, uOutlineBreakup );
+  float outlineContourLimit = mix(
+    0.28,
+    0.62,
+    saturate( uOutlineStrokeWidth / 3.0 )
+  );
+  outlineContourLimit *= mix( 0.86, 1.16, saturate( vShellWidthField / 1.8 ) );
+  float outlineContour = 1.0 - smoothstep(
+    outlineContourLimit,
+    outlineContourLimit + contourPixel * 3.0,
+    contourDistance
+  );
+  float outlineBristles = smoothstep( 0.10, 0.72, vShellBrushLoad + combTip * 0.18 );
+  float outlineCoverage = outlineContour
+    * outlineContinuity
+    * mix( 1.0, outlineBristles, uOutlineBreakup * 0.68 );
   float rimTipZone = 1.0 - smoothstep(
     contourPixel * 0.35,
     contourPixel * 5.5,
@@ -593,11 +1080,12 @@ void main() {
   if ( isRim > 0.5 ) {
     if ( attachedRimCoverage < 0.46 ) discard;
   } else {
-    if ( contour < 0.42 || outlineContinuity < 0.62 ) discard;
+    if ( outlineCoverage < 0.46 ) discard;
   }
 
-  vec3 shellColor = uShellColor * mix( 0.74, 1.28, strokes.b );
-  if ( uPaintDebugMode > 6.5 ) {
+  float shellDeposit = clamp( strokes.b * 0.62 + strokes.a * 0.16 + combTip * 0.30, 0.0, 1.0 );
+  vec3 shellColor = uShellColor * mix( 0.62, 1.38, shellDeposit );
+  if ( uPaintDebugMode > 7.5 && uPaintDebugMode < 8.5 ) {
     if ( uShellLayer < 0.5 ) shellColor = vec3( 1.0, 0.08, 0.28 );
     else if ( uShellLayer < 1.5 ) shellColor = vec3( 0.05, 0.92, 1.0 );
     else shellColor = vec3( 1.0, 0.92, 0.04 );
@@ -618,6 +1106,7 @@ export function createPaintShellMaterial(
   const widthMultiplier = layer === 2
     ? globals.outlineSeparation
     : { value: options.widthMultiplier ?? 1 };
+  const viewportSize = new THREE.Vector2(1, 1);
 
   const material = new THREE.ShaderMaterial({
     name: `Paint ${options.kind}`,
@@ -626,6 +1115,7 @@ export function createPaintShellMaterial(
       uShellColor: { value: new THREE.Color(options.color) },
       uShellWidth: widthUniform,
       uWidthMultiplier: widthMultiplier,
+      uObjectWidthMultiplier: { value: options.objectWidthMultiplier ?? 1 },
       uOffsetScale: offsetUniform,
       uOffsetDirection: { value: options.offsetDirection ?? new THREE.Vector2() },
       uOffsetMultiplier: { value: options.offsetMultiplier ?? 1 },
@@ -638,7 +1128,9 @@ export function createPaintShellMaterial(
       uRimContinuity: globals.rimContinuity,
       uOutlineBreakup: globals.outlineBreakup,
       uOutlineStrokeWidth: globals.outlineStrokeWidth,
+      uOutlineWidthVariation: globals.outlineWidthVariation,
       uPaintDebugMode: globals.debugMode,
+      uViewportSize: { value: viewportSize },
     },
     vertexShader: shellVertexShader,
     fragmentShader: shellFragmentShader,
@@ -646,60 +1138,123 @@ export function createPaintShellMaterial(
     depthWrite: true,
     toneMapped: true,
   });
+  material.onBeforeRender = (renderer) => {
+    renderer.getSize(viewportSize);
+  };
   material.userData.paintShellLayer = layer;
   return material;
 }
 
 export function createPainterlyDepthMaterial(
   globals: PaintGlobalUniforms,
+  objectTextureScale = 0.26,
+  surfaceMap: THREE.Texture | null = null,
+  surfaceAlphaTest = 0,
+  side: THREE.Side = THREE.FrontSide,
 ): THREE.MeshDepthMaterial {
   const material = new THREE.MeshDepthMaterial({
+    map: surfaceMap ?? globals.paintMap.value as THREE.Texture,
     depthPacking: THREE.RGBADepthPacking,
-    map: globals.paintMap.value as THREE.Texture,
-    alphaTest: 0.14,
+    alphaTest: 0.5,
+    side,
   });
 
   material.onBeforeCompile = (shader: CompiledShader) => {
-    shader.uniforms.uShadowPaintMap = globals.paintMap;
+    shader.uniforms.uPaintMap = globals.paintMap;
     shader.uniforms.uShadowLightDirection = globals.lightDirection;
     shader.uniforms.uShadowErosion = globals.shadowErosion;
     shader.uniforms.uShadowMaskOffset = globals.shadowMaskOffset;
+    shader.uniforms.uBrushScale = globals.brushScale;
+    shader.uniforms.uShadowBrushScale = globals.shadowBrushScale;
+    shader.uniforms.uObjectTextureScale = { value: objectTextureScale };
+    shader.uniforms.uSurfaceMap = { value: surfaceMap ?? globals.paintMap.value };
+    shader.uniforms.uSurfaceAlphaTest = { value: surfaceAlphaTest };
 
     shader.vertexShader = shader.vertexShader
       .replace(
         '#include <common>',
         `#include <common>
-        varying vec3 vShadowPaintNormalWorld;`,
+        attribute vec3 aSmoothNormal;
+        varying vec3 vShadowPaintNormalWorld;
+        varying vec3 vShadowObjectPosition;
+        varying vec3 vShadowObjectNormal;`,
       )
       .replace(
         '#include <project_vertex>',
         `#include <project_vertex>
-        vShadowPaintNormalWorld = normalize( mat3( modelMatrix ) * normal );`,
+        vec3 paintShadowNormal = aSmoothNormal;
+        #ifdef USE_SKINNING
+          mat4 paintSkinMatrix = mat4( 0.0 );
+          paintSkinMatrix += skinWeight.x * boneMatX;
+          paintSkinMatrix += skinWeight.y * boneMatY;
+          paintSkinMatrix += skinWeight.z * boneMatZ;
+          paintSkinMatrix += skinWeight.w * boneMatW;
+          paintSkinMatrix = bindMatrixInverse * paintSkinMatrix * bindMatrix;
+          paintShadowNormal = vec4(
+            paintSkinMatrix * vec4( paintShadowNormal, 0.0 )
+          ).xyz;
+        #endif
+        vShadowPaintNormalWorld = normalize( mat3( modelMatrix ) * paintShadowNormal );
+        vShadowObjectPosition = transformed;
+        vShadowObjectNormal = normalize( paintShadowNormal );`,
       );
 
     shader.fragmentShader = shader.fragmentShader
       .replace(
         '#include <common>',
         `#include <common>
-        uniform sampler2D uShadowPaintMap;
+        uniform sampler2D uPaintMap;
         uniform vec3 uShadowLightDirection;
         uniform float uShadowErosion;
         uniform float uShadowMaskOffset;
-        varying vec3 vShadowPaintNormalWorld;`,
+        uniform float uBrushScale;
+        uniform float uShadowBrushScale;
+        uniform float uObjectTextureScale;
+        uniform sampler2D uSurfaceMap;
+        uniform float uSurfaceAlphaTest;
+        varying vec3 vShadowPaintNormalWorld;
+        varying vec3 vShadowObjectPosition;
+        varying vec3 vShadowObjectNormal;
+
+        ${edgeFieldFunctions}`,
       )
       .replace(
         '#include <map_fragment>',
-        `vec4 shadowPaint = texture2D( uShadowPaintMap, vMapUv );
+        `vec4 shadowSurface = texture2D( uSurfaceMap, vMapUv );
+        if ( uSurfaceAlphaTest > 0.0 && shadowSurface.a < uSurfaceAlphaTest ) discard;
+        vec4 shadowPaint = samplePaintEdgeFieldScaled(
+          vShadowObjectPosition,
+          vShadowObjectNormal,
+          3.71,
+          uShadowBrushScale
+        );
+        float shadowComb = paintEdgeComb(
+          vShadowObjectPosition,
+          vShadowObjectNormal,
+          shadowPaint,
+          3.71
+        );
         vec3 shadowNormal = normalize( vShadowPaintNormalWorld );
-        float shadowFacing = pow( dot( normalize( uShadowLightDirection ), shadowNormal ), 2.0 );
+        float shadowFacing = pow(
+          abs( dot( normalize( uShadowLightDirection ), shadowNormal ) ),
+          2.0
+        );
         float shadowCurvature = length( dFdx( shadowNormal ) ) + length( dFdy( shadowNormal ) );
-        float shadowFlatPreserve = 1.0 - step( 0.000002, shadowCurvature );
-        float shadowBrushMask = saturate( shadowPaint.a * shadowFacing + shadowFlatPreserve + uShadowMaskOffset );
-        diffuseColor.a *= mix( 1.0, shadowBrushMask, uShadowErosion );`,
+        float shadowFlatPreserve = 1.0 - smoothstep( 0.00002, 0.0004, shadowCurvature );
+        float shadowBrushMask = max(
+          shadowFlatPreserve,
+          paintShadowStrokeMask(
+            shadowPaint,
+            shadowComb,
+            shadowFacing,
+            uShadowMaskOffset
+          )
+        );
+        diffuseColor.a *= mix( 1.0, shadowBrushMask, saturate( uShadowErosion ) );`,
       );
   };
 
-  material.customProgramCacheKey = () => 'painterly-depth-v2';
+  material.customProgramCacheKey = () => 'painterly-depth-v4';
   return material;
 }
 

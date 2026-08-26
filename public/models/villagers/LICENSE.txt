@@ -1,0 +1,19 @@
+Villager model asset
+====================
+
+quaternius-villager-man.glb is "Man" by Quaternius, from the Animated Men
+Pack, distributed under Creative Commons Zero v1.0 Universal (CC0 1.0):
+https://creativecommons.org/publicdomain/zero/1.0/
+
+Source pages:
+
+- https://poly.pizza/m/fjHyMd5Wxw
+- https://poly.pizza/bundle/Animated-Men-Pack-DAC9SDgMQT
+
+Downloaded GLB:
+
+- https://static.poly.pizza/985eacbf-9dde-44b7-9270-4e35c8400b13.glb
+
+The model retains its authored rig and animation clips. Attribution is not
+required by CC0, but this record is kept with the asset so its provenance and
+reuse terms remain auditable.

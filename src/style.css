@@ -100,9 +100,53 @@ button {
   top: 28px;
   left: 32px;
   display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 14px;
+  width: min(292px, calc(100vw - 64px));
+  pointer-events: auto;
+}
+
+.brand-lockup {
+  display: flex;
   align-items: center;
   gap: 13px;
-  pointer-events: none;
+}
+
+.scene-picker {
+  display: grid;
+  width: 100%;
+  padding: 12px 13px 13px;
+  border: 1px solid rgb(255 255 255 / 18%);
+  border-radius: 4px;
+  background: linear-gradient(135deg, rgb(255 255 255 / 7%), transparent 54%), rgb(8 9 13 / 76%);
+  box-shadow: 0 16px 42px rgb(0 0 0 / 24%);
+  backdrop-filter: blur(16px);
+}
+
+.scene-picker > span {
+  margin-bottom: 8px;
+  color: rgb(255 255 255 / 54%);
+  font-family: 'DM Mono', Consolas, monospace;
+  font-size: 8px;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.scene-picker select {
+  width: 100%;
+  min-width: 0;
+  border-color: rgb(255 255 255 / 24%);
+  background-color: rgb(13 15 21 / 92%);
+  color: #fff5ec;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.scene-picker:focus-within {
+  border-color: rgb(255 98 74 / 72%);
+  box-shadow: 0 16px 42px rgb(0 0 0 / 24%), 0 0 0 1px rgb(255 98 74 / 28%);
 }
 
 .brand h1,
@@ -192,6 +236,84 @@ button {
 
 #object-label.is-object {
   color: var(--accent-warm);
+}
+
+#object-label.is-selected {
+  color: #fff1c9;
+}
+
+.transform-toolbar {
+  position: absolute;
+  z-index: 6;
+  top: 28px;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  border: 1px solid rgb(255 255 255 / 17%);
+  border-radius: 3px;
+  background: rgb(8 9 13 / 78%);
+  box-shadow: 0 14px 44px rgb(0 0 0 / 28%);
+  color: rgb(255 255 255 / 68%);
+  transform: translateX(-50%);
+  backdrop-filter: blur(15px);
+}
+
+.transform-toolbar[hidden] {
+  display: none;
+}
+
+.transform-toolbar strong {
+  max-width: 150px;
+  padding: 0 13px;
+  overflow: hidden;
+  color: #fff3e4;
+  font-family: 'DM Mono', Consolas, monospace;
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.transform-toolbar output {
+  padding: 0 10px;
+  border-left: 1px solid rgb(255 255 255 / 10%);
+  color: rgb(255 255 255 / 38%);
+  font-family: 'DM Mono', Consolas, monospace;
+  font-size: 8px;
+  white-space: nowrap;
+}
+
+.transform-toolbar button {
+  min-height: 34px;
+  padding: 0 10px;
+  border-left: 1px solid rgb(255 255 255 / 10%);
+  background: transparent;
+  color: rgb(255 255 255 / 54%);
+  cursor: pointer;
+  font-size: 9px;
+  transition: background 160ms ease, color 160ms ease;
+}
+
+.transform-toolbar button:hover,
+.transform-toolbar button.is-active {
+  background: rgb(255 255 255 / 9%);
+  color: white;
+}
+
+.transform-toolbar kbd {
+  margin-left: 4px;
+  color: rgb(255 255 255 / 31%);
+  font-family: 'DM Mono', Consolas, monospace;
+  font-size: 8px;
+}
+
+#transform-close {
+  width: 34px;
+  padding: 0;
+  color: var(--accent-warm);
+  font-size: 16px;
 }
 
 .camera-dock {
@@ -452,6 +574,18 @@ details[open] summary span::before {
   background: linear-gradient(105deg, #0c0822 0 31%, #5542a1 31% 56%, #d6478d 56% 77%, #73e4d5 77%);
 }
 
+.swatch.earthy {
+  background: linear-gradient(105deg, #24140d 0 28%, #65704a 28% 52%, #a74025 52% 76%, #e2a94f 76%);
+}
+
+.swatch.sky {
+  background: linear-gradient(105deg, #081a33 0 28%, #2b70a4 28% 52%, #9fe4f2 52% 76%, #ffd0ae 76%);
+}
+
+.swatch.verdant {
+  background: linear-gradient(105deg, #0d2017 0 28%, #315f40 28% 52%, #7b8d37 52% 76%, #d8d999 76%);
+}
+
 .range-row {
   display: grid;
   grid-template-columns: 1fr auto;
@@ -673,6 +807,7 @@ select {
 
 .panel-footer button {
   flex: 1;
+  min-width: 0;
   padding: 10px 13px;
   border: 1px solid var(--line);
   border-radius: 2px;
@@ -684,6 +819,11 @@ select {
   letter-spacing: 0.045em;
   text-transform: uppercase;
   transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+}
+
+#export-settings {
+  border-color: rgb(255 189 121 / 34%);
+  color: var(--accent-warm);
 }
 
 .panel-footer button:hover {
@@ -801,6 +941,11 @@ select {
     display: none;
   }
 
+  .transform-toolbar {
+    top: auto;
+    bottom: 70px;
+  }
+
   .camera-dock {
     right: 18px;
     bottom: 20px;
@@ -811,6 +956,7 @@ select {
   .brand {
     top: 20px;
     left: 20px;
+    width: min(270px, calc(100vw - 40px));
   }
 
   .brand-mark {
@@ -836,6 +982,12 @@ select {
   }
 
   .camera-dock button span {
+    display: none;
+  }
+
+  .transform-toolbar strong,
+  .transform-toolbar output,
+  .transform-toolbar kbd {
     display: none;
   }
 

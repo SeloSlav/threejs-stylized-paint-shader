@@ -4,10 +4,16 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+overrides:
+  seedthree>three: 0.185.1
+
 importers:
 
   .:
     dependencies:
+      seedthree:
+        specifier: github:SeloSlav/SeedThree#4c20609db11f99605018e94cf7833351692d569a
+        version: https://codeload.github.com/SeloSlav/SeedThree/tar.gz/4c20609db11f99605018e94cf7833351692d569a
       three:
         specifier: 0.185.1
         version: 0.185.1
@@ -356,6 +362,9 @@ packages:
     resolution: {integrity: sha512-WkUDrojuJs0xkgGf2udWxa3yGBRxPtxUkB79i6aCZLRgc7PM8fZe9TosfPDcvEpQZbuFASnHYmRLBLUbmLOIIA==}
     engines: {node: '>= 12.0.0'}
 
+  lil-gui@0.21.0:
+    resolution: {integrity: sha512-tpvxN7v1GvE/Tv+GRopfOp0W7fVEjF4PltkuX8vOCIfim22rD1ztvfkoEMcv9lzQeuNUSeIrUmUjBwmlW/oUew==}
+
   meshoptimizer@1.1.1:
     resolution: {integrity: sha512-oRFNWJRDA/WTrVj7NWvqa5HqE1t9MYDj2VaWirQCzCCrAd2GHrqR/sQezCxiWATPNlKTcRaPRHPJwIRoPBAp5g==}
 
@@ -379,6 +388,10 @@ packages:
     resolution: {integrity: sha512-VD2IE5PUG4Oj8zz2VGykiYd5wbnjdIiSsNQb8Qu5B+noEp+A78mu2iVvpp27g8es14Tk9rofNs5Tku9iQCS4fA==}
     engines: {node: ^20.19.0 || >=22.12.0}
     hasBin: true
+
+  seedthree@https://codeload.github.com/SeloSlav/SeedThree/tar.gz/4c20609db11f99605018e94cf7833351692d569a:
+    resolution: {gitHosted: true, integrity: sha512-VOoYAKX2w3Yd07J5zy16RYPDboBKgIcvSOIRDRYH17LpNqoNnmd+SGkSU8ZaDrh0evT8wxWAkRoA5GND1EO1Gw==, tarball: https://codeload.github.com/SeloSlav/SeedThree/tar.gz/4c20609db11f99605018e94cf7833351692d569a}
+    version: 0.1.0-alpha
 
   source-map-js@1.2.1:
     resolution: {integrity: sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA==}
@@ -627,6 +640,8 @@ snapshots:
       lightningcss-win32-arm64-msvc: 1.33.0
       lightningcss-win32-x64-msvc: 1.33.0
 
+  lil-gui@0.21.0: {}
+
   meshoptimizer@1.1.1: {}
 
   nanoid@3.3.18: {}
@@ -661,6 +676,11 @@ snapshots:
       '@rolldown/binding-openharmony-arm64': 1.2.5
       '@rolldown/binding-win32-arm64-msvc': 1.2.5
       '@rolldown/binding-win32-x64-msvc': 1.2.5
+
+  seedthree@https://codeload.github.com/SeloSlav/SeedThree/tar.gz/4c20609db11f99605018e94cf7833351692d569a:
+    dependencies:
+      lil-gui: 0.21.0
+      three: 0.185.1
 
   source-map-js@1.2.1: {}
 
