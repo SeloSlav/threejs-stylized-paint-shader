@@ -4,6 +4,14 @@ An interactive Three.js port and extension of Gabriel de Laubier's
 [Stylized Paint Shader Breakdown](https://cyn-prod.com/stylized-paint-shader-breakdown).
 The demo is pinned to **Three.js 0.185.1**.
 
+![Sunset Noir preset in the interactive Three.js paint shader laboratory](docs/screenshots/sunset-noir.png)
+
+*Sunset Noir — the full interactive material laboratory and brush controls.*
+
+![Ultraviolet preset showing close-up procedural brushwork in Three.js](docs/screenshots/ultraviolet.png)
+
+*Ultraviolet — close-up brush texture, painted reflections, and broken outlines.*
+
 ## Run
 
 ```bash
