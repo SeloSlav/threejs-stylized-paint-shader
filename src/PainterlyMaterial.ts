@@ -12,7 +12,8 @@ export const PAINT_DEBUG_MODES = [
   'Edge layers',
   'Source albedo',
   'Texture weights',
-  'Impasto highlight',
+  'White paint mask',
+  'Macro pigment regions',
 ] as const;
 
 export type PaintDebugMode = (typeof PAINT_DEBUG_MODES)[number];
@@ -150,8 +151,11 @@ export interface PainterlyMaterialOptions {
   surfaceMapStrength?: number;
   surfaceAlphaTest?: number;
   sourceAlbedoWeight?: number;
+  preserveSourceAlbedo?: boolean;
   triplanarMacro?: boolean;
   objectTextureScale?: number;
+  lightPaintScale?: number;
+  macroVariation?: number;
   roughness?: number;
   metalness?: number;
   clearcoat?: number;
@@ -175,6 +179,8 @@ export interface PainterlyMaterial extends THREE.MeshPhysicalMaterial {
     rim: PaintUniform;
   };
   paintProjectionScale: PaintUniform;
+  paintLightPaintScale: PaintUniform;
+  paintMacroVariation: PaintUniform;
   paintSurface: {
     color: PaintUniform;
     map: PaintUniform;
@@ -207,6 +213,68 @@ vec4 samplePaintTriplanar( vec3 coordinate, vec3 normalObject ) {
   return texture2D( uPaintMap, uvX ) * weight.x
     + texture2D( uPaintMap, uvY ) * weight.y
     + texture2D( uPaintMap, uvZ ) * weight.z;
+}
+
+float samplePaintStrokeBody(
+  vec3 coordinate,
+  vec3 normalObject,
+  float requestedSampleOffset
+) {
+  vec3 normalDirection = normalize( normalObject );
+  vec3 referenceAxis = abs( normalDirection.y ) < 0.92
+    ? vec3( 0.0, 1.0, 0.0 )
+    : vec3( 1.0, 0.0, 0.0 );
+  vec3 acrossStroke = normalize( cross( referenceAxis, normalDirection ) );
+  vec3 alongStroke = normalize( cross( normalDirection, acrossStroke ) );
+  float sampleOffset = clamp( requestedSampleOffset, 0.011, 0.030 );
+
+  // Max-pooling across a compact surface-local footprint closes the source
+  // mask's comb/tooth holes into coherent meso-scale stroke bodies while
+  // retaining the authored caps and frayed outer silhouette.
+  float strokeBody = samplePaintTriplanar( coordinate, normalDirection ).b;
+  strokeBody = max(
+    strokeBody,
+    samplePaintTriplanar(
+      coordinate + acrossStroke * sampleOffset,
+      normalDirection
+    ).b
+  );
+  strokeBody = max(
+    strokeBody,
+    samplePaintTriplanar(
+      coordinate - acrossStroke * sampleOffset,
+      normalDirection
+    ).b
+  );
+  strokeBody = max(
+    strokeBody,
+    samplePaintTriplanar(
+      coordinate + alongStroke * sampleOffset,
+      normalDirection
+    ).b
+  );
+  strokeBody = max(
+    strokeBody,
+    samplePaintTriplanar(
+      coordinate - alongStroke * sampleOffset,
+      normalDirection
+    ).b
+  );
+  strokeBody = max(
+    strokeBody,
+    samplePaintTriplanar(
+      coordinate + ( alongStroke + acrossStroke ) * sampleOffset * 0.68,
+      normalDirection
+    ).b
+  );
+  strokeBody = max(
+    strokeBody,
+    samplePaintTriplanar(
+      coordinate - ( alongStroke + acrossStroke ) * sampleOffset * 0.68,
+      normalDirection
+    ).b
+  );
+  return strokeBody;
 }
 
 vec4 samplePaintEdgeFieldScaled(
@@ -316,6 +384,8 @@ uniform float uShadowMaskOffset;
 uniform float uShadowBrushScale;
 uniform float uPaintDebugMode;
 uniform float uObjectTextureScale;
+uniform float uLightPaintScale;
+uniform float uMacroVariation;
 
 varying vec3 vPaintWorldPosition;
 varying vec3 vPaintGeometricNormalWorld;
@@ -331,6 +401,9 @@ float paintOilBand = 0.0;
 float paintOilCoverage = 0.0;
 float paintReflectionDeposit = 0.0;
 float paintHighlightImpasto = 0.0;
+float paintDirectWhiteMask = 0.0;
+float paintStrokeBodyField = 0.0;
+float paintMacroRegion = 0.0;
 float paintFresnel = 0.0;
 float paintErosionMask = 0.0;
 float paintShadowMask = 1.0;
@@ -448,6 +521,7 @@ float paintStroke = smoothstep(
   0.84 - ( 1.0 - uStrokeContrast ) * 0.22,
   paintPacked.b
 );
+paintStrokeBodyField = paintPacked.b;
 vec4 paintSurfaceSample = texture2D( uSurfaceMap, vMapUv );
 if ( uSurfaceAlphaTest > 0.0 && paintSurfaceSample.a < uSurfaceAlphaTest ) discard;
 vec3 paintSurfaceTexel = paintSurfaceSample.rgb;
@@ -479,6 +553,31 @@ vec3 paintAlbedo = mix(
   paintSourceStrokes,
   saturate( uSourceAlbedoWeight )
 );
+#ifdef PAINT_TEXTURELESS_SURFACE
+  // The material laboratory treats palette values as paint, not baked light.
+  // Lift only the pigment field so a dark texture mark cannot masquerade as a
+  // shadow; the toon ramp below remains free to drive real shadow to black.
+  float paintPigmentFloorLuminance = dot(
+    paintAlbedo,
+    vec3( 0.2126, 0.7152, 0.0722 )
+  );
+  float paintAuthoredPigmentLuminance = 0.285
+    + ( paintStroke - 0.5 ) * 0.075
+    + ( paintPacked.a - 0.5 ) * 0.018;
+  paintAlbedo *= paintAuthoredPigmentLuminance
+    / max( paintPigmentFloorLuminance, 0.001 );
+#else
+  // Imported albedo may carry legitimate hue detail, but near-black texels
+  // cannot become baked pseudo-shadow in the shared demo treatment.
+  float paintSourcePigmentLuminance = dot(
+    paintAlbedo,
+    vec3( 0.2126, 0.7152, 0.0722 )
+  );
+  paintAlbedo *= max(
+    1.0,
+    0.10 / max( paintSourcePigmentLuminance, 0.001 )
+  );
+#endif
 
 vec3 paintBandNormal = paintResolvedNormalWorld;
 #ifdef PAINT_TEXTURELESS_SURFACE
@@ -489,26 +588,226 @@ vec3 paintBandNormal = paintResolvedNormalWorld;
   ) );
 #endif
 float paintNdotL = dot( paintBandNormal, normalize( uPaintLightDirection ) );
-float paintBandNoiseScale = 0.24;
 #ifdef PAINT_TEXTURELESS_SURFACE
-  paintBandNoiseScale = 0.015;
+  // One stable object-space brush field displaces every light boundary. The
+  // result is a stack of opaque pigment deposits, not a smooth lighting value
+  // multiplied into one continuously interpolated albedo.
+  vec3 paintStrokeFootprint = fwidth( paintObjectCoordinate );
+  float paintStrokeBodyOffset = 0.011 + max(
+    paintStrokeFootprint.x,
+    max( paintStrokeFootprint.y, paintStrokeFootprint.z )
+  ) * 0.72;
+  float paintStrokeBodyRaw = samplePaintStrokeBody(
+    paintObjectCoordinate,
+    normalize( vPaintObjectNormal ),
+    paintStrokeBodyOffset
+  );
+  float paintStrokeBodyAA = clamp(
+    fwidth( paintStrokeBodyRaw ) * 0.25,
+    0.006,
+    0.028
+  );
+  paintStrokeBodyField = smoothstep(
+    0.30 - paintStrokeBodyAA,
+    0.30 + paintStrokeBodyAA,
+    paintStrokeBodyRaw
+  );
+  vec4 paintMacroPackedA = samplePaintTriplanar(
+    paintObjectCoordinate * 0.17 + vec3( 0.173, 0.419, 0.287 ),
+    normalize( vPaintObjectNormal )
+  );
+  vec4 paintMacroPackedB = samplePaintTriplanar(
+    paintObjectCoordinate * 0.31 + vec3( 0.631, 0.137, 0.491 ),
+    normalize( vPaintObjectNormal )
+  );
+  float paintMacroPrimary = smoothstep(
+    0.24,
+    0.76,
+    paintMacroPackedA.b * 0.78 + paintMacroPackedA.a * 0.22
+  );
+  float paintMacroCounter = smoothstep(
+    0.28,
+    0.74,
+    paintMacroPackedB.b * 0.72 + paintMacroPackedB.a * 0.28
+  );
+  paintMacroRegion = saturate(
+    paintMacroPrimary * 0.72 + paintMacroCounter * 0.38
+  ) * saturate( uMacroVariation );
+  float paintLayerEdge = ( paintStrokeBodyField - 0.5 ) * 0.28
+    + ( paintMacroPrimary - 0.5 ) * saturate( uMacroVariation ) * 0.34;
+  float paintLayerCoordinate = paintNdotL
+    + paintLayerEdge * uDetailStrength;
+  float paintLayerAA = max( fwidth( paintLayerCoordinate ) * 0.62, 0.004 );
+  float paintLayerFeather = max(
+    min( uBandSoftness * 0.24, 0.018 ),
+    paintLayerAA
+  );
+  float paintMagentaThreshold = uShadowThreshold;
+  float paintRedThreshold = mix(
+    uShadowThreshold,
+    uLightThreshold,
+    0.22
+  );
+  // Red owns most of the lit hemisphere. Orange enters late and yellow is
+  // reserved for only the hottest facing planes, matching the reference's
+  // red-first value composition.
+  float paintOrangeThreshold = mix( uLightThreshold, 1.0, 0.18 );
+  // Yellow is a high-light pigment, not the default lit color. Keeping a
+  // large interval between orange and yellow preserves the target's dominant
+  // red/orange masses and prevents a pale, uniformly sunlit scene.
+  float paintYellowThreshold = mix( uLightThreshold, 1.0, 0.62 );
+  // The black mass follows real light only. Decorative stroke displacement
+  // begins after the shadow boundary so brush noise cannot manufacture stray
+  // black islands on a lit surface.
+  float paintInkCoordinate = paintNdotL
+    + ( paintStrokeBodyField - 0.5 ) * 0.025;
+  float paintMagentaLayer = smoothstep(
+    paintMagentaThreshold - paintLayerFeather,
+    paintMagentaThreshold + paintLayerFeather,
+    paintInkCoordinate
+  );
+  float paintRedLayer = smoothstep(
+    paintRedThreshold - paintLayerFeather,
+    paintRedThreshold + paintLayerFeather,
+    paintLayerCoordinate
+  );
+  float paintOrangeLayer = smoothstep(
+    paintOrangeThreshold - paintLayerFeather,
+    paintOrangeThreshold + paintLayerFeather,
+    paintLayerCoordinate
+  );
+  float paintYellowLayer = smoothstep(
+    paintYellowThreshold - paintLayerFeather,
+    paintYellowThreshold + paintLayerFeather,
+    paintLayerCoordinate
+  );
+
+  // Shadows retain form with a discrete blue-grey/navy lift near the
+  // terminator, while their deepest back-facing step remains true black.
+  float paintShadowRise = smoothstep(
+    -0.82,
+    paintMagentaThreshold - paintLayerFeather * 1.5,
+    paintNdotL
+  );
+  float paintShadowStep = floor( paintShadowRise * 3.999 ) / 3.0;
+  vec3 paintInkPigment = mix(
+    vec3( 0.002, 0.003, 0.006 ),
+    vec3( 0.020, 0.050, 0.115 ),
+    paintShadowStep
+  );
+  vec3 paintLumaWeights = vec3( 0.2126, 0.7152, 0.0722 );
+  vec3 paintMagentaBase = uPaintDark
+    * ( 0.10 / max( dot( uPaintDark, paintLumaWeights ), 0.001 ) );
+  vec3 paintRedBase = uReflectionDark
+    * ( 0.20 / max( dot( uReflectionDark, paintLumaWeights ), 0.001 ) );
+  vec3 paintOrangeBase = uPaintLight
+    * ( 0.26 / max( dot( uPaintLight, paintLumaWeights ), 0.001 ) );
+  vec3 paintYellowBase = uReflectionLight
+    * ( 0.38 / max( dot( uReflectionLight, paintLumaWeights ), 0.001 ) );
+  vec3 paintMagentaPigment = paintMagentaBase
+    * mix( 0.90, 1.06, paintStrokeBodyField );
+  vec3 paintRedPigment = paintRedBase
+    * mix( 0.94, 1.06, paintStrokeBodyField );
+  vec3 paintOrangePigment = paintOrangeBase
+    * mix( 0.96, 1.05, paintStrokeBodyField );
+  vec3 paintYellowPigment = paintYellowBase
+    * mix( 0.98, 1.04, paintStrokeBodyField );
+
+  diffuseColor.rgb = paintInkPigment;
+  diffuseColor.rgb = mix( diffuseColor.rgb, paintMagentaPigment, paintMagentaLayer );
+  diffuseColor.rgb = mix( diffuseColor.rgb, paintRedPigment, paintRedLayer );
+  diffuseColor.rgb = mix( diffuseColor.rgb, paintOrangePigment, paintOrangeLayer );
+  diffuseColor.rgb = mix( diffuseColor.rgb, paintYellowPigment, paintYellowLayer );
+  vec3 paintMacroUnderpaint = mix(
+    paintMagentaPigment,
+    paintRedPigment,
+    paintMacroCounter
+  );
+  float paintMacroCoverage = paintMacroRegion
+    * paintMagentaLayer
+    * ( 1.0 - paintYellowLayer * 0.22 )
+    * 0.92;
+  diffuseColor.rgb = mix(
+    diffuseColor.rgb,
+    paintMacroUnderpaint,
+    paintMacroCoverage
+  );
+  paintToonBand = paintMagentaLayer * 0.22
+    + paintRedLayer * 0.24
+    + paintOrangeLayer * 0.25
+    + paintYellowLayer * 0.29;
+
+  // Peak white uses one raw (non max-pooled) broad-bristle sample. Reusing the
+  // closed stroke body made the control almost binary and flooded whole lobes.
+  // A zero scale is an exact opt-out for imported/source-colour materials.
+  float paintWhiteEnabled = step( 0.001, uLightPaintScale );
+  float paintWhiteRaw = samplePaintTriplanar(
+    paintObjectCoordinate + vec3( 0.113, 0.271, 0.067 ),
+    normalize( vPaintObjectNormal )
+  ).b;
+  float paintWhiteCutoff = mix(
+    0.94,
+    0.68,
+    saturate( uLightPaintScale )
+  );
+  float paintWhiteLoad = smoothstep(
+    paintWhiteCutoff - 0.035,
+    paintWhiteCutoff + 0.045,
+    paintWhiteRaw
+  );
+  float paintWhiteFacing = smoothstep(
+    0.72,
+    0.88,
+    paintNdotL
+  );
+  paintDirectWhiteMask = paintWhiteEnabled * paintWhiteLoad * paintWhiteFacing;
+  diffuseColor.rgb = mix(
+    diffuseColor.rgb,
+    vec3( 1.35, 1.25, 1.10 ),
+    paintDirectWhiteMask * 0.92
+  );
+#else
+  float paintBandNoise = ( paintPacked.a - 0.5 )
+    * uDetailStrength
+    * 0.24;
+  float paintMidBand = smoothstep(
+    uShadowThreshold - uBandSoftness,
+    uShadowThreshold + uBandSoftness,
+    paintNdotL + paintBandNoise
+  );
+  float paintLightBand = smoothstep(
+    uLightThreshold - uBandSoftness,
+    uLightThreshold + uBandSoftness,
+    paintNdotL + paintBandNoise
+  );
+  float paintPenumbraBand = smoothstep(
+    uShadowThreshold + uBandSoftness * 0.35,
+    uShadowThreshold + uBandSoftness * 3.2,
+    paintNdotL + paintBandNoise
+  );
+  float paintPenumbraValue = mix( uShadowValue, uMidtoneValue, 0.46 );
+  paintToonBand = mix( uShadowValue, paintPenumbraValue, paintMidBand );
+  paintToonBand = mix( paintToonBand, uMidtoneValue, paintPenumbraBand );
+  paintToonBand = mix( paintToonBand, 0.94, paintLightBand );
+  vec3 paintShadowedPigment = paintAlbedo * paintToonBand;
+  float paintPigmentLuminance = dot(
+    paintAlbedo,
+    vec3( 0.2126, 0.7152, 0.0722 )
+  );
+  vec3 paintSaturatedPigment = vec3( paintPigmentLuminance )
+    + ( paintAlbedo - vec3( paintPigmentLuminance ) ) * 1.16;
+  vec3 paintLitPigment = paintSaturatedPigment
+    * mix( 1.06, 1.18, paintStroke );
+  #ifdef PAINT_PRESERVE_SOURCE_ALBEDO
+    paintSaturatedPigment = paintAlbedo;
+    paintLitPigment = paintAlbedo * mix( 0.92, 1.02, paintStroke );
+  #endif
+  diffuseColor.rgb = mix(
+    paintShadowedPigment,
+    paintLitPigment,
+    paintLightBand * 0.72
+  );
 #endif
-float paintBandNoise = ( paintPacked.a - 0.5 )
-  * uDetailStrength
-  * paintBandNoiseScale;
-float paintMidBand = smoothstep(
-  uShadowThreshold - uBandSoftness,
-  uShadowThreshold + uBandSoftness,
-  paintNdotL + paintBandNoise
-);
-float paintLightBand = smoothstep(
-  uLightThreshold - uBandSoftness,
-  uLightThreshold + uBandSoftness,
-  paintNdotL + paintBandNoise
-);
-paintToonBand = mix( uShadowValue, uMidtoneValue, paintMidBand );
-paintToonBand = mix( paintToonBand, 1.0, paintLightBand );
-diffuseColor.rgb = paintAlbedo * paintToonBand;
 
 float paintReflectionOffset = 0.055;
 vec4 paintReflectionPacked;
@@ -722,7 +1021,11 @@ float paintReceiverLight = clamp(
   1.6
 );
 float paintReceiverModulation = mix(
+#ifdef PAINT_TEXTURELESS_SURFACE
+  0.84,
+#else
   0.66,
+#endif
   1.08,
   smoothstep( 0.10, 1.05, paintReceiverLight )
 );
@@ -763,7 +1066,7 @@ outgoingLight += uRimColor * paintRimMask * uRimStrength;
 if ( uPaintDebugMode > 0.5 && uPaintDebugMode < 1.5 ) {
   outgoingLight = vec3( paintPacked.rg, 1.0 );
 } else if ( uPaintDebugMode < 2.5 && uPaintDebugMode > 1.5 ) {
-  outgoingLight = vec3( paintPacked.b );
+  outgoingLight = vec3( paintStrokeBodyField );
 } else if ( uPaintDebugMode < 3.5 && uPaintDebugMode > 2.5 ) {
   outgoingLight = vec3( paintPacked.a );
 } else if ( uPaintDebugMode < 4.5 && uPaintDebugMode > 3.5 ) {
@@ -783,11 +1086,17 @@ if ( uPaintDebugMode > 0.5 && uPaintDebugMode < 1.5 ) {
     + paintSurfaceWeights.y * vec3( 0.03, 0.28, 0.12 )
     + paintSurfaceWeights.z * vec3( 0.94, 0.63, 0.19 )
     + paintSurfaceWeights.w * vec3( 0.46, 0.16, 0.06 );
-} else if ( uPaintDebugMode > 10.5 ) {
+} else if ( uPaintDebugMode > 10.5 && uPaintDebugMode < 11.5 ) {
   outgoingLight = mix(
-    vec3( paintReflectionDeposit * 0.16 ),
+    vec3( paintDirectWhiteMask * 0.08 ),
     vec3( 1.0, 0.93, 0.78 ),
-    paintHighlightImpasto
+    max( paintDirectWhiteMask, paintHighlightImpasto * uOilStrength )
+  );
+} else if ( uPaintDebugMode > 11.5 ) {
+  outgoingLight = mix(
+    vec3( 0.025, 0.008, 0.04 ),
+    vec3( 1.0, 0.15, 0.48 ),
+    paintMacroRegion
   );
 }
 `;
@@ -803,18 +1112,18 @@ export function createPaintGlobalUniforms(texture: THREE.Texture): PaintGlobalUn
     normalStrength: { value: 0.9 },
     strokeContrast: { value: 0.9 },
     detailStrength: { value: 0.72 },
-    shadowThreshold: { value: -0.8 },
-    lightThreshold: { value: 0.12 },
-    bandSoftness: { value: 0.02 },
-    shadowValue: { value: 0.12 },
-    midtoneValue: { value: 0.6 },
+    shadowThreshold: { value: -0.36 },
+    lightThreshold: { value: 0.18 },
+    bandSoftness: { value: 0.06 },
+    shadowValue: { value: 0.02 },
+    midtoneValue: { value: 0.74 },
     oilStrength: { value: 0.48 },
     oilThreshold: { value: 0.34 },
     nativeSheen: { value: 0 },
     highlightBrushiness: { value: 1.08 },
     highlightSteps: { value: 4 },
     roughnessVariation: { value: 0.36 },
-    rimStrength: { value: 0.9 },
+    rimStrength: { value: 0.48 },
     rimPower: { value: 5 },
     edgeErosion: { value: 0.82 },
     edgeBristleReach: { value: 0.76 },
@@ -824,14 +1133,14 @@ export function createPaintGlobalUniforms(texture: THREE.Texture): PaintGlobalUn
     shadowMaskOffset: { value: -0.05 },
     shadowBrushScale: { value: 0.72 },
     debugMode: { value: 0 },
-    outerRimWidth: { value: 0.002 },
-    rimContinuity: { value: 0.84 },
-    outlineWidth: { value: 0.028 },
-    outlineJitter: { value: 0.036 },
-    outlineSeparation: { value: 1.55 },
-    outlineBreakup: { value: 0.62 },
-    outlineStrokeWidth: { value: 2.15 },
-    outlineWidthVariation: { value: 0.82 },
+    outerRimWidth: { value: 0.001 },
+    rimContinuity: { value: 0.5 },
+    outlineWidth: { value: 0.014 },
+    outlineJitter: { value: 0.026 },
+    outlineSeparation: { value: 1.35 },
+    outlineBreakup: { value: 0.78 },
+    outlineStrokeWidth: { value: 1.45 },
+    outlineWidthVariation: { value: 0.68 },
     outlinePrimaryColor: { value: new THREE.Color('#86b9db') },
     outlineSecondaryColor: { value: new THREE.Color('#ffe2b7') },
   };
@@ -842,6 +1151,8 @@ function bindUniforms(
   globals: PaintGlobalUniforms,
   palette: PainterlyMaterial['paintPalette'],
   projectionScale: PaintUniform,
+  lightPaintScale: PaintUniform,
+  macroVariation: PaintUniform,
   surface: PainterlyMaterial['paintSurface'],
 ): void {
   shaderUniforms.uPaintMap = globals.paintMap;
@@ -873,6 +1184,8 @@ function bindUniforms(
   shaderUniforms.uShadowBrushScale = globals.shadowBrushScale;
   shaderUniforms.uPaintDebugMode = globals.debugMode;
   shaderUniforms.uObjectTextureScale = projectionScale;
+  shaderUniforms.uLightPaintScale = lightPaintScale;
+  shaderUniforms.uMacroVariation = macroVariation;
   shaderUniforms.uPaintDark = palette.dark;
   shaderUniforms.uPaintLight = palette.light;
   shaderUniforms.uSurfaceColor = surface.color;
@@ -907,6 +1220,8 @@ export function createPainterlyMaterial(
     rim: { value: new THREE.Color(options.palette.rim) },
   };
   material.paintProjectionScale = { value: options.objectTextureScale ?? 0.26 };
+  material.paintLightPaintScale = { value: options.lightPaintScale ?? 1 };
+  material.paintMacroVariation = { value: options.macroVariation ?? 0.2 };
   material.paintSurface = {
     color: { value: new THREE.Color(options.surfaceColor ?? 0xffffff) },
     map: { value: options.surfaceMap ?? globals.paintMap.value },
@@ -914,11 +1229,16 @@ export function createPainterlyMaterial(
     alphaTest: { value: options.surfaceAlphaTest ?? 0 },
     sourceAlbedoWeight: { value: options.sourceAlbedoWeight ?? 0 },
   };
-  if (options.triplanarMacro || options.texturelessSurface) {
+  if (
+    options.triplanarMacro
+    || options.texturelessSurface
+    || options.preserveSourceAlbedo
+  ) {
     material.defines = {
       ...material.defines,
       ...(options.triplanarMacro ? { PAINT_TRIPLANAR_MACRO: 1 } : {}),
       ...(options.texturelessSurface ? { PAINT_TEXTURELESS_SURFACE: 1 } : {}),
+      ...(options.preserveSourceAlbedo ? { PAINT_PRESERVE_SOURCE_ALBEDO: 1 } : {}),
     };
   }
 
@@ -928,6 +1248,8 @@ export function createPainterlyMaterial(
       globals,
       material.paintPalette,
       material.paintProjectionScale,
+      material.paintLightPaintScale,
+      material.paintMacroVariation,
       material.paintSurface,
     );
 
@@ -982,9 +1304,10 @@ export function createPainterlyMaterial(
   };
 
   material.customProgramCacheKey = () => [
-    'painterly-physical-v9-surface-anchor',
+    'painterly-physical-v12-macro-pigment',
     options.triplanarMacro ? 'macro' : 'uv',
     options.texturelessSurface ? 'textureless' : 'textured',
+    options.preserveSourceAlbedo ? 'source-color' : 'graded-color',
   ].join('-');
   return material;
 }
@@ -1014,6 +1337,7 @@ varying vec3 vShellObjectPosition;
 varying vec3 vShellObjectNormal;
 varying vec3 vShellViewPosition;
 varying vec3 vShellViewNormal;
+varying vec3 vShellWorldNormal;
 varying float vShellWidthField;
 varying float vShellBrushLoad;
 
@@ -1124,6 +1448,7 @@ void main() {
   baseClip.xy += pixelStepNdc * shellPixels * baseClip.w;
   vShellViewPosition = - viewPosition.xyz;
   vShellViewNormal = viewNormal;
+  vShellWorldNormal = normalize( mat3( modelMatrix ) * paintShellNormal );
   gl_Position = baseClip;
 }
 `;
@@ -1141,11 +1466,13 @@ uniform float uRimContinuity;
 uniform float uOutlineBreakup;
 uniform float uOutlineStrokeWidth;
 uniform float uPaintDebugMode;
+uniform vec3 uPaintLightDirection;
 varying vec2 vShellUv;
 varying vec3 vShellObjectPosition;
 varying vec3 vShellObjectNormal;
 varying vec3 vShellViewPosition;
 varying vec3 vShellViewNormal;
+varying vec3 vShellWorldNormal;
 varying float vShellWidthField;
 varying float vShellBrushLoad;
 
@@ -1209,6 +1536,12 @@ void main() {
     contourDistance
   );
   float attachedRimCoverage = mix( 1.0, rimCoverage, rimTipZone );
+  float shellLightFacing = smoothstep(
+    -0.22,
+    0.62,
+    dot( normalize( vShellWorldNormal ), normalize( uPaintLightDirection ) )
+  );
+  attachedRimCoverage *= mix( 0.14, 1.0, shellLightFacing );
 
   if ( isRim > 0.5 ) {
     if ( attachedRimCoverage < 0.46 ) discard;
@@ -1267,6 +1600,7 @@ export function createPaintShellMaterial(
       uOutlineStrokeWidth: globals.outlineStrokeWidth,
       uOutlineWidthVariation: globals.outlineWidthVariation,
       uPaintDebugMode: globals.debugMode,
+      uPaintLightDirection: globals.lightDirection,
       uViewportSize: globals.viewportSize,
       uOutlineZoomScale: globals.outlineZoomScale,
     },

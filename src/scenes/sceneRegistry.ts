@@ -45,6 +45,7 @@ export interface ScenePaintedObjectOptions {
   surfaceMapStrength?: number;
   surfaceAlphaTest?: number;
   sourceAlbedoWeight?: number;
+  preserveSourceAlbedo?: boolean;
   nativeMaterial?: THREE.Material;
   roughness?: number;
   metalness?: number;
@@ -53,6 +54,8 @@ export interface ScenePaintedObjectOptions {
   side?: THREE.Side;
   triplanarMacro?: boolean;
   objectTextureScale?: number;
+  lightPaintScale?: number;
+  macroVariation?: number;
 }
 
 export interface ScenePaintedMeshOptions extends Omit<
@@ -102,6 +105,14 @@ export const PAINT_SCENES: readonly PaintSceneDefinition[] = [
     eyebrow: 'SCENE 01 · SHADER FORMS',
     title: 'Material study',
     orbitDistance: { min: 5.5, max: 35 },
+    controlOverrides: {
+      strokeContrast: 0.94,
+      detailStrength: 0.96,
+      shadowThreshold: -0.02,
+      lightThreshold: 0.46,
+      bandSoftness: 0.018,
+      oilStrength: 0,
+    },
     cameraBookmarks: {
       near: {
         position: new THREE.Vector3(1.1, 2.25, 7.4),
@@ -137,7 +148,7 @@ export const PAINT_SCENES: readonly PaintSceneDefinition[] = [
       bandSoftness: 0.075,
       shadowValue: 0.16,
       midtoneValue: 0.52,
-      oilStrength: 0.16,
+      oilStrength: 0,
       nativeSheen: 0.04,
       roughnessVariation: 0.18,
       rimStrength: 0.08,
@@ -168,8 +179,13 @@ export const PAINT_SCENES: readonly PaintSceneDefinition[] = [
     title: 'Tier 1 burgage',
     orbitDistance: { min: 4.2, max: 32 },
     controlOverrides: {
-      outerRimWidth: 0.1,
-      outlineWidth: 0.5,
+      shadowThreshold: -0.68,
+      lightThreshold: 0.28,
+      bandSoftness: 0.03,
+      shadowValue: 0.04,
+      midtoneValue: 0.4,
+      outerRimWidth: 0,
+      outlineWidth: 0,
       outlineJitter: 0,
       oilStrength: 0,
     },
@@ -197,6 +213,11 @@ export const PAINT_SCENES: readonly PaintSceneDefinition[] = [
     title: 'American beech',
     orbitDistance: { min: 10, max: 72 },
     controlOverrides: {
+      shadowThreshold: -0.64,
+      lightThreshold: 0.26,
+      bandSoftness: 0.035,
+      shadowValue: 0.05,
+      midtoneValue: 0.42,
       outerRimWidth: 0,
       outlineWidth: 0,
       outlineJitter: 0,
@@ -226,6 +247,11 @@ export const PAINT_SCENES: readonly PaintSceneDefinition[] = [
     title: 'Painterly villager',
     orbitDistance: { min: 1.8, max: 14 },
     controlOverrides: {
+      shadowThreshold: -0.68,
+      lightThreshold: 0.28,
+      bandSoftness: 0.03,
+      shadowValue: 0.04,
+      midtoneValue: 0.42,
       outerRimWidth: 0,
       outlineWidth: 0,
       outlineJitter: 0,
@@ -253,24 +279,82 @@ export function paintSceneById(id: string): PaintSceneDefinition | undefined {
   return PAINT_SCENES.find((scene) => scene.id === id);
 }
 
+// Canonical material-study pigments. Black is produced by the lighting stack,
+// never by these local texture colors; the paint field itself moves through
+// magenta, red, orange, and yellow before the cream-white light deposit.
+// These remain local so imported assets keep their authored pigments.
+const MATERIAL_STUDY_ORANGE_PALETTES: readonly PaintPalette[] = [
+  {
+    dark: '#9f0b58',
+    light: '#e74b12',
+    reflectionDark: '#d91431',
+    reflectionLight: '#f28a0a',
+    rim: '#fff0dc',
+    outline: '#5a0730',
+    outlineSecondary: '#ff3b20',
+  },
+  {
+    dark: '#84115f',
+    light: '#e83b17',
+    reflectionDark: '#d70e45',
+    reflectionLight: '#ef7908',
+    rim: '#ffe8d5',
+    outline: '#4d0b44',
+    outlineSecondary: '#f52b39',
+  },
+  {
+    dark: '#aa124b',
+    light: '#ea5810',
+    reflectionDark: '#dd1e25',
+    reflectionLight: '#f49408',
+    rim: '#fff1d2',
+    outline: '#68102d',
+    outlineSecondary: '#ff4028',
+  },
+  {
+    dark: '#8c1256',
+    light: '#e95710',
+    reflectionDark: '#d91631',
+    reflectionLight: '#f08008',
+    rim: '#ffead0',
+    outline: '#581039',
+    outlineSecondary: '#ff3525',
+  },
+  {
+    dark: '#aa1e5b',
+    light: '#e96610',
+    reflectionDark: '#df3824',
+    reflectionLight: '#f59c0b',
+    rim: '#fff3d9',
+    outline: '#6f153c',
+    outlineSecondary: '#ff512d',
+  },
+];
+
 function buildMaterialStudyScene(context: SceneBuildContext): void {
   const floor = context.addPaintedObject({
     label: 'Painted ground',
     geometry: new THREE.PlaneGeometry(24, 18, 1, 1),
-    paletteIndex: 4,
+    palette: MATERIAL_STUDY_ORANGE_PALETTES[4]!,
+    texturelessSurface: true,
+    lightPaintScale: 0.035,
+    macroVariation: 0.95,
     position: new THREE.Vector3(0, -1.88, -1.2),
     rotation: new THREE.Euler(-Math.PI / 2, 0, -0.03),
     shells: false,
     roughness: 0.78,
-    metalness: 0.02,
-    clearcoat: 0.12,
+    metalness: 0,
+    clearcoat: 0,
   });
   floor.base.receiveShadow = true;
 
   const leftWall = context.addPaintedObject({
     label: 'Painted wall',
     geometry: new THREE.BoxGeometry(11, 11, 0.18, 1, 1, 1),
-    paletteIndex: 2,
+    palette: MATERIAL_STUDY_ORANGE_PALETTES[2]!,
+    texturelessSurface: true,
+    lightPaintScale: 0.055,
+    macroVariation: 0.9,
     position: new THREE.Vector3(-7.2, 3.25, -3.2),
     // Face the panel into both the design camera and the shared key-light
     // direction. A side-on 90° normal locked the whole plane in the dark toon
@@ -279,48 +363,56 @@ function buildMaterialStudyScene(context: SceneBuildContext): void {
     shells: false,
     roughness: 0.8,
     metalness: 0,
-    clearcoat: 0.08,
+    clearcoat: 0,
   });
   leftWall.base.receiveShadow = true;
 
   const heroSphere = context.addPaintedObject({
     label: 'Hero sphere',
     geometry: new THREE.SphereGeometry(2.3, 128, 72),
-    paletteIndex: 0,
+    palette: MATERIAL_STUDY_ORANGE_PALETTES[0]!,
+    texturelessSurface: true,
+    lightPaintScale: 0.55,
+    macroVariation: 0.46,
     position: new THREE.Vector3(-2.45, 0.48, 0.85),
     spin: new THREE.Vector3(0, 0.11, 0),
     triplanarMacro: true,
     objectTextureScale: 0.2,
-    roughness: 0.27,
-    metalness: 0.5,
-    clearcoat: 0.72,
-    clearcoatRoughness: 0.16,
+    roughness: 0.68,
+    metalness: 0,
+    clearcoat: 0,
   });
 
   context.addPaintedObject({
     label: 'Floating sphere',
     geometry: new THREE.SphereGeometry(1.55, 96, 56),
-    paletteIndex: 1,
+    palette: MATERIAL_STUDY_ORANGE_PALETTES[1]!,
+    texturelessSurface: true,
+    lightPaintScale: 0.5,
+    macroVariation: 0.5,
     position: new THREE.Vector3(-0.05, 3.25, -2.25),
     spin: new THREE.Vector3(0, -0.08, 0),
     triplanarMacro: true,
     objectTextureScale: 0.22,
-    roughness: 0.31,
-    metalness: 0.44,
-    clearcoat: 0.64,
+    roughness: 0.7,
+    metalness: 0,
+    clearcoat: 0,
   });
 
   context.addPaintedObject({
     label: 'Mid sphere',
     geometry: new THREE.SphereGeometry(1.38, 96, 56),
-    paletteIndex: 2,
+    palette: MATERIAL_STUDY_ORANGE_PALETTES[2]!,
+    texturelessSurface: true,
+    lightPaintScale: 0.53,
+    macroVariation: 0.5,
     position: new THREE.Vector3(1.35, 0.02, -1.35),
     spin: new THREE.Vector3(0, 0.13, 0),
     triplanarMacro: true,
     objectTextureScale: 0.24,
-    roughness: 0.34,
-    metalness: 0.38,
-    clearcoat: 0.55,
+    roughness: 0.72,
+    metalness: 0,
+    clearcoat: 0,
   });
 
   const wedgeShape = new THREE.Shape();
@@ -341,70 +433,85 @@ function buildMaterialStudyScene(context: SceneBuildContext): void {
   context.addPaintedObject({
     label: 'Wedge block',
     geometry: wedgeGeometry,
-    paletteIndex: 3,
+    palette: MATERIAL_STUDY_ORANGE_PALETTES[3]!,
+    texturelessSurface: true,
+    lightPaintScale: 0.36,
+    macroVariation: 0.52,
     position: new THREE.Vector3(4.35, -0.1, 0.25),
     rotation: new THREE.Euler(-0.08, -0.64, 0.04),
     spin: new THREE.Vector3(0, -0.028, 0),
     smoothNormals: 'radial',
     triplanarMacro: true,
     objectTextureScale: 0.16,
-    roughness: 0.52,
-    metalness: 0.11,
-    clearcoat: 0.36,
+    roughness: 0.72,
+    metalness: 0,
+    clearcoat: 0,
   });
 
   context.addPaintedObject({
     label: 'Suspended cylinder',
     geometry: new THREE.CylinderGeometry(0.68, 0.68, 1.65, 72, 4),
-    paletteIndex: 4,
+    palette: MATERIAL_STUDY_ORANGE_PALETTES[4]!,
+    texturelessSurface: true,
+    lightPaintScale: 0.38,
+    macroVariation: 0.46,
     position: new THREE.Vector3(-2.0, 3.95, -2.65),
     rotation: new THREE.Euler(0.05, 0.1, Math.PI / 2),
     spin: new THREE.Vector3(0.04, 0.05, 0.12),
     smoothNormals: 'radial',
-    roughness: 0.3,
-    metalness: 0.46,
-    clearcoat: 0.56,
+    roughness: 0.7,
+    metalness: 0,
+    clearcoat: 0,
   });
 
   context.addPaintedObject({
     label: 'Brush cylinder',
     geometry: new THREE.CylinderGeometry(1.02, 1.02, 2.75, 84, 6),
-    paletteIndex: 1,
+    palette: MATERIAL_STUDY_ORANGE_PALETTES[1]!,
+    texturelessSurface: true,
+    lightPaintScale: 0.38,
+    macroVariation: 0.46,
     position: new THREE.Vector3(3.6, -0.5, -2.45),
     rotation: new THREE.Euler(Math.PI / 2, 0.15, -0.42),
     spin: new THREE.Vector3(0.03, 0.04, -0.02),
     smoothNormals: 'radial',
-    roughness: 0.29,
-    metalness: 0.5,
-    clearcoat: 0.62,
+    roughness: 0.68,
+    metalness: 0,
+    clearcoat: 0,
   });
 
   context.addPaintedObject({
     label: 'Rounded monolith',
     geometry: new RoundedBoxGeometry(1.2, 2.6, 1.2, 8, 0.18),
-    paletteIndex: 3,
+    palette: MATERIAL_STUDY_ORANGE_PALETTES[3]!,
+    texturelessSurface: true,
+    lightPaintScale: 0.34,
+    macroVariation: 0.5,
     position: new THREE.Vector3(5.35, 2.8, -3.55),
     rotation: new THREE.Euler(0.08, -0.24, -0.13),
     spin: new THREE.Vector3(0.02, -0.07, 0.025),
     smoothNormals: 'radial',
     triplanarMacro: true,
     objectTextureScale: 0.3,
-    roughness: 0.38,
-    metalness: 0.3,
-    clearcoat: 0.48,
+    roughness: 0.72,
+    metalness: 0,
+    clearcoat: 0,
   });
 
   const pedestal = context.addPaintedObject({
     label: 'Painted plinth',
     geometry: new RoundedBoxGeometry(4.8, 0.48, 4.1, 5, 0.12),
-    paletteIndex: 3,
+    palette: MATERIAL_STUDY_ORANGE_PALETTES[3]!,
+    texturelessSurface: true,
+    lightPaintScale: 0.05,
+    macroVariation: 0.65,
     position: new THREE.Vector3(0.55, -1.55, -1.3),
     rotation: new THREE.Euler(0, -0.08, 0),
     shells: false,
     smoothNormals: 'radial',
     roughness: 0.67,
-    metalness: 0.04,
-    clearcoat: 0.18,
+    metalness: 0,
+    clearcoat: 0,
   });
   pedestal.base.receiveShadow = true;
   heroSphere.group.userData.primary = true;

@@ -116,19 +116,19 @@ const PRESETS: Record<PresetName, Preset> = {
     exposure: 1.16,
     palettes: [
       {
-        dark: '#101827', light: '#385f66', reflectionDark: '#bd3f67', reflectionLight: '#fff0df', rim: '#fff7ea', outline: '#8ec8dc', outlineSecondary: '#fff2d1',
+        dark: '#497b86', light: '#df8f91', reflectionDark: '#bd3f67', reflectionLight: '#fff0df', rim: '#fff7ea', outline: '#8ec8dc', outlineSecondary: '#fff2d1',
       },
       {
-        dark: '#1c1548', light: '#6463a8', reflectionDark: '#e75474', reflectionLight: '#ffd7c3', rim: '#fff4ee', outline: '#b8ffe8', outlineSecondary: '#ffc7d5',
+        dark: '#655397', light: '#d47ca7', reflectionDark: '#e75474', reflectionLight: '#ffd7c3', rim: '#fff4ee', outline: '#b8ffe8', outlineSecondary: '#ffc7d5',
       },
       {
-        dark: '#163941', light: '#5e7d7d', reflectionDark: '#ef4b57', reflectionLight: '#ffe4b5', rim: '#fff2d7', outline: '#93dce0', outlineSecondary: '#fff4b5',
+        dark: '#4d8283', light: '#e18c88', reflectionDark: '#ef4b57', reflectionLight: '#ffe4b5', rim: '#fff2d7', outline: '#93dce0', outlineSecondary: '#fff4b5',
       },
       {
-        dark: '#24414d', light: '#76949a', reflectionDark: '#ed7257', reflectionLight: '#f7eee4', rim: '#fff7ed', outline: '#a9e7f0', outlineSecondary: '#ffd8bf',
+        dark: '#60818e', light: '#e2a095', reflectionDark: '#ed7257', reflectionLight: '#f7eee4', rim: '#fff7ed', outline: '#a9e7f0', outlineSecondary: '#ffd8bf',
       },
       {
-        dark: '#b25561', light: '#f8e5d5', reflectionDark: '#ff4d55', reflectionLight: '#ffd8a4', rim: '#fff0dc', outline: '#b7eef4', outlineSecondary: '#fff6d8',
+        dark: '#b66d79', light: '#efcbbb', reflectionDark: '#ff4d55', reflectionLight: '#ffd8a4', rim: '#fff0dc', outline: '#b7eef4', outlineSecondary: '#fff6d8',
       },
     ],
   },
@@ -148,19 +148,19 @@ const PRESETS: Record<PresetName, Preset> = {
     exposure: 1.08,
     palettes: [
       {
-        dark: '#334a60', light: '#c55f5e', reflectionDark: '#d3132c', reflectionLight: '#ff7a38', rim: '#ffb05e', outline: '#86b9db', outlineSecondary: '#ffe2b7',
+        dark: '#378f9a', light: '#e36a62', reflectionDark: '#d3132c', reflectionLight: '#ff7a38', rim: '#ffb05e', outline: '#86b9db', outlineSecondary: '#ffe2b7',
       },
       {
-        dark: '#44355f', light: '#98658f', reflectionDark: '#e21d2f', reflectionLight: '#ff9349', rim: '#ffc06d', outline: '#9ebde8', outlineSecondary: '#ffd284',
+        dark: '#7354a2', light: '#c76a9d', reflectionDark: '#e21d2f', reflectionLight: '#ff9349', rim: '#ffc06d', outline: '#9ebde8', outlineSecondary: '#ffd284',
       },
       {
-        dark: '#37465c', light: '#c95c67', reflectionDark: '#e42a23', reflectionLight: '#ffa55a', rim: '#ffd188', outline: '#b1cee6', outlineSecondary: '#fff0c4',
+        dark: '#4a858c', light: '#e16b72', reflectionDark: '#e42a23', reflectionLight: '#ffa55a', rim: '#ffd188', outline: '#b1cee6', outlineSecondary: '#fff0c4',
       },
       {
-        dark: '#39546b', light: '#7f9aad', reflectionDark: '#cf2631', reflectionLight: '#ff8650', rim: '#ffb16d', outline: '#8ebbd1', outlineSecondary: '#ffbd7d',
+        dark: '#4f8da6', light: '#84b7c8', reflectionDark: '#cf2631', reflectionLight: '#ff8650', rim: '#ffb16d', outline: '#8ebbd1', outlineSecondary: '#ffbd7d',
       },
       {
-        dark: '#633537', light: '#d85b42', reflectionDark: '#f13a1b', reflectionLight: '#ffb45e', rim: '#ffe09b', outline: '#93c7dc', outlineSecondary: '#ffe497',
+        dark: '#a65379', light: '#e87755', reflectionDark: '#f13a1b', reflectionLight: '#ffb45e', rim: '#ffe09b', outline: '#93c7dc', outlineSecondary: '#ffe497',
       },
     ],
   },
@@ -180,19 +180,19 @@ const PRESETS: Record<PresetName, Preset> = {
     exposure: 1.08,
     palettes: [
       {
-        dark: '#0c0a23', light: '#233d67', reflectionDark: '#7f2b91', reflectionLight: '#65e0d4', rim: '#ff9fcb', outline: '#dfff55', outlineSecondary: '#72f4e6',
+        dark: '#4d407d', light: '#806db2', reflectionDark: '#7f2b91', reflectionLight: '#65e0d4', rim: '#ff9fcb', outline: '#dfff55', outlineSecondary: '#72f4e6',
       },
       {
-        dark: '#15103d', light: '#5e47a8', reflectionDark: '#e44c9e', reflectionLight: '#9ef3ef', rim: '#ffc5e9', outline: '#e9ff66', outlineSecondary: '#a2f7ef',
+        dark: '#5e4a8f', light: '#aa6bb3', reflectionDark: '#e44c9e', reflectionLight: '#9ef3ef', rim: '#ffc5e9', outline: '#e9ff66', outlineSecondary: '#a2f7ef',
       },
       {
-        dark: '#281141', light: '#a43d87', reflectionDark: '#ef4c77', reflectionLight: '#ffc87e', rim: '#ffe0bd', outline: '#f2ff74', outlineSecondary: '#ffb3dd',
+        dark: '#704873', light: '#c86b9f', reflectionDark: '#ef4c77', reflectionLight: '#ffc87e', rim: '#ffe0bd', outline: '#f2ff74', outlineSecondary: '#ffb3dd',
       },
       {
-        dark: '#0c2833', light: '#347c89', reflectionDark: '#7659d3', reflectionLight: '#82f3dd', rim: '#c2fff0', outline: '#dcff52', outlineSecondary: '#94fff0',
+        dark: '#3f7180', light: '#68a8a5', reflectionDark: '#7659d3', reflectionLight: '#82f3dd', rim: '#c2fff0', outline: '#dcff52', outlineSecondary: '#94fff0',
       },
       {
-        dark: '#2d1037', light: '#c3447c', reflectionDark: '#fa4b77', reflectionLight: '#ffcf9f', rim: '#ffe0c5', outline: '#efff7a', outlineSecondary: '#ffa8dd',
+        dark: '#75486f', light: '#d86d9a', reflectionDark: '#fa4b77', reflectionLight: '#ffcf9f', rim: '#ffe0c5', outline: '#efff7a', outlineSecondary: '#ffa8dd',
       },
     ],
   },
@@ -212,19 +212,19 @@ const PRESETS: Record<PresetName, Preset> = {
     exposure: 1.04,
     palettes: [
       {
-        dark: '#24140d', light: '#75452e', reflectionDark: '#8f3423', reflectionLight: '#d98a45', rim: '#f4d2a1', outline: '#76846a', outlineSecondary: '#d9b77d',
+        dark: '#70503f', light: '#a66f54', reflectionDark: '#8f3423', reflectionLight: '#d98a45', rim: '#f4d2a1', outline: '#76846a', outlineSecondary: '#d9b77d',
       },
       {
-        dark: '#1d2115', light: '#65704a', reflectionDark: '#71462b', reflectionLight: '#c79b58', rim: '#ead8aa', outline: '#8f9a69', outlineSecondary: '#c8a978',
+        dark: '#5e6045', light: '#87906a', reflectionDark: '#71462b', reflectionLight: '#c79b58', rim: '#ead8aa', outline: '#8f9a69', outlineSecondary: '#c8a978',
       },
       {
-        dark: '#342419', light: '#a27a50', reflectionDark: '#9d4e31', reflectionLight: '#e1b56f', rim: '#f5dfb6', outline: '#79765e', outlineSecondary: '#d4c08b',
+        dark: '#725b46', light: '#ba946b', reflectionDark: '#9d4e31', reflectionLight: '#e1b56f', rim: '#f5dfb6', outline: '#79765e', outlineSecondary: '#d4c08b',
       },
       {
-        dark: '#291a0d', light: '#946127', reflectionDark: '#a74025', reflectionLight: '#e2a94f', rim: '#f7d991', outline: '#6f8060', outlineSecondary: '#daba6c',
+        dark: '#78573a', light: '#b78047', reflectionDark: '#a74025', reflectionLight: '#e2a94f', rim: '#f7d991', outline: '#6f8060', outlineSecondary: '#daba6c',
       },
       {
-        dark: '#2a1512', light: '#874d3c', reflectionDark: '#a63e2c', reflectionLight: '#d9875a', rim: '#f0c7a0', outline: '#7d7661', outlineSecondary: '#d8a77b',
+        dark: '#764d45', light: '#a96e60', reflectionDark: '#a63e2c', reflectionLight: '#d9875a', rim: '#f0c7a0', outline: '#7d7661', outlineSecondary: '#d8a77b',
       },
     ],
   },
@@ -244,19 +244,19 @@ const PRESETS: Record<PresetName, Preset> = {
     exposure: 1.12,
     palettes: [
       {
-        dark: '#081a33', light: '#2b70a4', reflectionDark: '#126a90', reflectionLight: '#9fe4f2', rim: '#fff5dd', outline: '#c8efff', outlineSecondary: '#ffb899',
+        dark: '#315d7c', light: '#5992b6', reflectionDark: '#126a90', reflectionLight: '#9fe4f2', rim: '#fff5dd', outline: '#c8efff', outlineSecondary: '#ffb899',
       },
       {
-        dark: '#102446', light: '#4b8fc2', reflectionDark: '#6b5bb0', reflectionLight: '#b8edff', rim: '#fff8e6', outline: '#d6f5ff', outlineSecondary: '#ffc6ad',
+        dark: '#4a668f', light: '#759dc3', reflectionDark: '#6b5bb0', reflectionLight: '#b8edff', rim: '#fff8e6', outline: '#d6f5ff', outlineSecondary: '#ffc6ad',
       },
       {
-        dark: '#123656', light: '#5fa8ca', reflectionDark: '#d06472', reflectionLight: '#ffd0ae', rim: '#fff6e0', outline: '#c4eff5', outlineSecondary: '#ffc1a2',
+        dark: '#557990', light: '#82b4c7', reflectionDark: '#d06472', reflectionLight: '#ffd0ae', rim: '#fff6e0', outline: '#c4eff5', outlineSecondary: '#ffc1a2',
       },
       {
-        dark: '#152b45', light: '#6b9ec4', reflectionDark: '#b95f69', reflectionLight: '#ffd39f', rim: '#fff4d6', outline: '#d2f2ff', outlineSecondary: '#ffb58e',
+        dark: '#536d89', light: '#8da9c2', reflectionDark: '#b95f69', reflectionLight: '#ffd39f', rim: '#fff4d6', outline: '#d2f2ff', outlineSecondary: '#ffb58e',
       },
       {
-        dark: '#0c2841', light: '#467f9a', reflectionDark: '#2e7394', reflectionLight: '#afe7e3', rim: '#f3fbef', outline: '#bfeaff', outlineSecondary: '#ffd2b0',
+        dark: '#3e6b7d', light: '#6e99a8', reflectionDark: '#2e7394', reflectionLight: '#afe7e3', rim: '#f3fbef', outline: '#bfeaff', outlineSecondary: '#ffd2b0',
       },
     ],
   },
@@ -276,23 +276,29 @@ const PRESETS: Record<PresetName, Preset> = {
     exposure: 1.07,
     palettes: [
       {
-        dark: '#0d2017', light: '#315f40', reflectionDark: '#506c2c', reflectionLight: '#bfd26c', rim: '#eef1bd', outline: '#8bb99b', outlineSecondary: '#d8d999',
+        dark: '#41634e', light: '#63815f', reflectionDark: '#506c2c', reflectionLight: '#bfd26c', rim: '#eef1bd', outline: '#8bb99b', outlineSecondary: '#d8d999',
       },
       {
-        dark: '#142117', light: '#4a7348', reflectionDark: '#7b5a2c', reflectionLight: '#d2bf69', rim: '#f2ecc0', outline: '#9bc0a0', outlineSecondary: '#d6cf89',
+        dark: '#52694c', light: '#79936a', reflectionDark: '#7b5a2c', reflectionLight: '#d2bf69', rim: '#f2ecc0', outline: '#9bc0a0', outlineSecondary: '#d6cf89',
       },
       {
-        dark: '#172719', light: '#628956', reflectionDark: '#4d7a47', reflectionLight: '#afd486', rim: '#edf5ca', outline: '#89b6a1', outlineSecondary: '#c8d990',
+        dark: '#536f4e', light: '#819e70', reflectionDark: '#4d7a47', reflectionLight: '#afd486', rim: '#edf5ca', outline: '#89b6a1', outlineSecondary: '#c8d990',
       },
       {
-        dark: '#241a12', light: '#75583a', reflectionDark: '#5d3e25', reflectionLight: '#c09a5a', rim: '#eadcae', outline: '#7fa28a', outlineSecondary: '#c9bb7a',
+        dark: '#6a5845', light: '#927457', reflectionDark: '#5d3e25', reflectionLight: '#c09a5a', rim: '#eadcae', outline: '#7fa28a', outlineSecondary: '#c9bb7a',
       },
       {
-        dark: '#102322', light: '#3f7265', reflectionDark: '#3c6f5f', reflectionLight: '#a8d0a3', rim: '#e9f0c1', outline: '#91c1a8', outlineSecondary: '#d6dc91',
+        dark: '#3f6b65', light: '#689389', reflectionDark: '#3c6f5f', reflectionLight: '#a8d0a3', rim: '#e9f0c1', outline: '#91c1a8', outlineSecondary: '#d6dc91',
       },
     ],
   },
 };
+
+// One canonical art direction owns every scene. The former Look buttons made
+// palette, light colour, exposure, and environment change together, which
+// obscured whether a dark patch came from pigment or actual lighting.
+const REFERENCE_LOOK_ID: PresetName = 'noir';
+const REFERENCE_LOOK_LABEL = 'Reference paint';
 
 const initialScene = PAINT_SCENES[0];
 if (!initialScene) throw new Error('The paint scene registry is empty.');
@@ -303,18 +309,18 @@ const defaultControls = {
   normalStrength: 0.9,
   strokeContrast: 0.9,
   detailStrength: 0.72,
-  shadowThreshold: -0.8,
-  lightThreshold: 0.12,
-  bandSoftness: 0.02,
-  shadowValue: 0.12,
-  midtoneValue: 0.6,
+  shadowThreshold: -0.36,
+  lightThreshold: 0.18,
+  bandSoftness: 0.06,
+  shadowValue: 0.02,
+  midtoneValue: 0.74,
   oilStrength: 0.48,
   oilThreshold: 0.34,
   nativeSheen: 0,
   highlightBrushiness: 1.08,
   highlightSteps: 4,
   roughnessVariation: 0.36,
-  rimStrength: 0.9,
+  rimStrength: 0.48,
   rimPower: 5,
   edgeErosion: 0.82,
   edgeBristleReach: 0.76,
@@ -323,14 +329,14 @@ const defaultControls = {
   shadowErosion: 1,
   shadowMaskOffset: -0.05,
   shadowBrushScale: 0.72,
-  outerRimWidth: 0.002,
-  rimContinuity: 0.84,
-  outlineWidth: 0.028,
-  outlineJitter: 0.036,
-  outlineSeparation: 1.55,
-  outlineBreakup: 0.62,
-  outlineStrokeWidth: 2.15,
-  outlineWidthVariation: 0.82,
+  outerRimWidth: 0.001,
+  rimContinuity: 0.5,
+  outlineWidth: 0.014,
+  outlineJitter: 0.026,
+  outlineSeparation: 1.35,
+  outlineBreakup: 0.78,
+  outlineStrokeWidth: 1.45,
+  outlineWidthVariation: 0.68,
 } satisfies PainterlyControlValues;
 
 const root = document.querySelector<HTMLDivElement>('#app');
@@ -929,7 +935,7 @@ function configurePainterlyOutlineComposite(
   material.needsUpdate = true;
 }
 
-let currentPreset: PresetName = 'noir';
+const currentPreset: PresetName = REFERENCE_LOOK_ID;
 let currentScene: PaintSceneDefinition = initialScene;
 let shaderEnabled = true;
 let autoRotate = true;
@@ -987,8 +993,11 @@ function createPaintedObject(
     surfaceMapStrength: options.surfaceMapStrength,
     surfaceAlphaTest: options.surfaceAlphaTest,
     sourceAlbedoWeight: options.sourceAlbedoWeight,
+    preserveSourceAlbedo: options.preserveSourceAlbedo,
     triplanarMacro: options.triplanarMacro,
     objectTextureScale: options.objectTextureScale,
+    lightPaintScale: options.lightPaintScale,
+    macroVariation: options.macroVariation,
     roughness: options.roughness,
     metalness: options.metalness,
     clearcoat: options.clearcoat,
@@ -1261,7 +1270,7 @@ function activateScene(id: SceneId, immediate = false): void {
 
   controls.minDistance = nextScene.orbitDistance.min;
   controls.maxDistance = nextScene.orbitDistance.max;
-  applyPreset(nextScene.preferredPreset ?? currentPreset, true);
+  applyReferenceLook(true);
 
   const design = nextScene.cameraBookmarks.design;
   if (immediate) {
@@ -1352,9 +1361,8 @@ function createSky(uniforms: typeof skyUniforms): THREE.Mesh {
   return mesh;
 }
 
-function applyPreset(name: PresetName, resetOutlineColors = false): void {
-  currentPreset = name;
-  const preset = PRESETS[name];
+function applyReferenceLook(resetOutlineColors = false): void {
+  const preset = PRESETS[REFERENCE_LOOK_ID];
   skyUniforms.top.value.set(preset.top);
   skyUniforms.horizon.value.set(preset.horizon);
   skyUniforms.abyss.value.set(preset.abyss);
@@ -1390,11 +1398,8 @@ function applyPreset(name: PresetName, resetOutlineColors = false): void {
 
   if (resetOutlineColors) applySceneOutlineDefaults(true);
 
-  document.querySelectorAll<HTMLButtonElement>('[data-preset]').forEach((button) => {
-    button.classList.toggle('is-active', button.dataset.preset === name);
-  });
-  requiredElement<HTMLElement>('#preset-eyebrow').textContent = preset.eyebrow;
-  requiredElement<HTMLElement>('#preset-name').textContent = preset.label;
+  requiredElement<HTMLElement>('#preset-eyebrow').textContent = 'TRUE SHADOW / WHITE PAINT';
+  requiredElement<HTMLElement>('#preset-name').textContent = REFERENCE_LOOK_LABEL;
   syncOutlinePasses();
 }
 
@@ -1560,10 +1565,6 @@ function bindInterface(): void {
     });
   });
 
-  document.querySelectorAll<HTMLButtonElement>('[data-preset]').forEach((button) => {
-    button.addEventListener('click', () => applyPreset(button.dataset.preset as PresetName, true));
-  });
-
   document.querySelectorAll<HTMLButtonElement>('[data-camera]').forEach((button) => {
     button.addEventListener('click', () => setCameraBookmark(button.dataset.camera as CameraBookmarkName));
   });
@@ -1699,7 +1700,7 @@ function resetShaderControls(): void {
   elapsedTime = 0;
   paused = true;
   requiredElement<HTMLInputElement>('#pause-motion').checked = true;
-  applyPreset(currentScene.preferredPreset ?? 'noir', true);
+  applyReferenceLook(true);
   setCameraBookmark('design');
 }
 
@@ -1910,7 +1911,7 @@ function exportSettings(): void {
     },
     look: {
       id: currentPreset,
-      label: preset.label,
+      label: REFERENCE_LOOK_LABEL,
       palettes: preset.palettes,
     },
     paintTexture: activeTexture.metadata,
@@ -2085,8 +2086,8 @@ function createInterfaceMarkup(): string {
         </header>
 
         <div class="shot-caption">
-          <p id="preset-eyebrow" class="kicker">INK SHADOWS / HOT OIL</p>
-          <p id="preset-name">Sunset noir</p>
+          <p id="preset-eyebrow" class="kicker">TRUE SHADOW / WHITE PAINT</p>
+          <p id="preset-name">Reference paint</p>
           <span id="object-label">Left drag to orbit · right drag to pan · scroll to zoom</span>
         </div>
 
@@ -2122,20 +2123,8 @@ function createInterfaceMarkup(): string {
         </div>
 
         <div class="panel-scroll">
-          <section class="preset-section">
-            <div class="section-heading"><span>Look</span><small>01</small></div>
-            <div class="preset-grid">
-              <button type="button" data-preset="high-key"><i class="swatch high-key"></i>High key</button>
-              <button type="button" data-preset="noir" class="is-active"><i class="swatch noir"></i>Noir</button>
-              <button type="button" data-preset="ultraviolet"><i class="swatch ultraviolet"></i>UV</button>
-              <button type="button" data-preset="earthy"><i class="swatch earthy"></i>Earthy</button>
-              <button type="button" data-preset="sky"><i class="swatch sky"></i>Sky</button>
-              <button type="button" data-preset="verdant"><i class="swatch verdant"></i>Verdant</button>
-            </div>
-          </section>
-
           <details open>
-            <summary><span>Stroke field</span><small>02</small></summary>
+            <summary><span>Stroke field</span><small>01</small></summary>
             ${rangeMarkup('Brush scale', 'brush-scale', 'brushScale', 0.7, 8, 0.05)}
             ${rangeMarkup('Parallax depth', 'parallax-depth', 'parallaxDepth', 0, 0.12, 0.002)}
             ${rangeMarkup('Normal strength', 'normal-strength', 'normalStrength', 0, 1.8, 0.02)}
@@ -2144,7 +2133,7 @@ function createInterfaceMarkup(): string {
           </details>
 
           <details open>
-            <summary><span>Painted light</span><small>03</small></summary>
+            <summary><span>Painted light</span><small>02</small></summary>
             ${rangeMarkup('Shadow cut', 'shadow-threshold', 'shadowThreshold', -0.85, 0.25, 0.01)}
             ${rangeMarkup('Light cut', 'light-threshold', 'lightThreshold', 0.05, 0.9, 0.01)}
             ${rangeMarkup('Band feather', 'band-softness', 'bandSoftness', 0.005, 0.24, 0.005)}
@@ -2153,7 +2142,7 @@ function createInterfaceMarkup(): string {
           </details>
 
           <details open>
-            <summary><span>Oil &amp; relief</span><small>04</small></summary>
+            <summary><span>Oil &amp; relief</span><small>03</small></summary>
             ${rangeMarkup('Oil reflection', 'oil-strength', 'oilStrength', 0, 2.8, 0.01)}
             ${rangeMarkup('Reflection cut', 'oil-threshold', 'oilThreshold', -0.1, 0.9, 0.01)}
             ${rangeMarkup('Native sheen', 'native-sheen', 'nativeSheen', 0, 0.5, 0.005)}

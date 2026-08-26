@@ -10,7 +10,6 @@ const MODEL_URL = '/models/villagers/quaternius-villager-man.glb';
 const TARGET_HEIGHT = 1.72;
 const GROUNDING_HEIGHT = 0.012;
 const TEXTURELESS_STROKES_PER_METER = 4.2;
-const TEXTURELESS_UNDERPAINT_WEIGHT = 0.72;
 const CHARACTER_CONTOUR_SCALE = 1.25;
 
 export async function buildCc0ManScene(context: SceneBuildContext): Promise<void> {
@@ -80,8 +79,8 @@ export async function buildCc0ManScene(context: SceneBuildContext): Promise<void
       const sourceMaterial = layer.material as THREE.MeshStandardMaterial;
       const surfaceColor = sourceMaterial.color?.clone() ?? new THREE.Color('#7a6252');
       const surfaceMap = sourceMaterial.map ?? null;
-      const texturelessSurface = surfaceMap === null;
-      const objectTextureScale = texturelessSurface
+      const hasSurfaceMap = surfaceMap !== null;
+      const objectTextureScale = !hasSurfaceMap
         ? metricProjectionScale(sourceMesh)
         : 0.22;
       projectionScales.push(objectTextureScale);
@@ -93,10 +92,14 @@ export async function buildCc0ManScene(context: SceneBuildContext): Promise<void
         palette: paletteFromSurface(surfaceColor),
         surfaceColor,
         surfaceMap,
-        texturelessSurface,
-        surfaceMapStrength: surfaceMap ? 1 : 0,
+        // This GLB authors its shirt, skin, pants, and hair as material base
+        // colors rather than image maps. Those colors are source albedo, not a
+        // request for the palette-only treatment used by the material study.
+        texturelessSurface: false,
+        surfaceMapStrength: hasSurfaceMap ? 1 : 0,
         surfaceAlphaTest: sourceMaterial.alphaTest ?? 0,
-        sourceAlbedoWeight: texturelessSurface ? TEXTURELESS_UNDERPAINT_WEIGHT : 1,
+        sourceAlbedoWeight: 1,
+        preserveSourceAlbedo: true,
         nativeMaterial: sourceMaterial.clone(),
         roughness: Math.max(0.48, sourceMaterial.roughness ?? 0.72),
         metalness: Math.min(0.08, sourceMaterial.metalness ?? 0),
@@ -104,9 +107,11 @@ export async function buildCc0ManScene(context: SceneBuildContext): Promise<void
         clearcoatRoughness: 0.56,
         side: sourceMaterial.side,
         shells: true,
-        shellWidthScale: texturelessSurface ? CHARACTER_CONTOUR_SCALE : 1,
-        triplanarMacro: texturelessSurface,
+        shellWidthScale: !hasSurfaceMap ? CHARACTER_CONTOUR_SCALE : 1,
+        triplanarMacro: !hasSurfaceMap,
         objectTextureScale,
+        // Imported pigment stays authoritative; no cream/white paint overlay.
+        lightPaintScale: 0,
       };
       context.addPaintedMesh(options, parent);
       materialLayerCount += 1;
