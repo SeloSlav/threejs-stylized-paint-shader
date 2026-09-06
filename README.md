@@ -23,13 +23,13 @@ textures; the scenes need no downloaded models or image assets.
 ![The long way home](docs/screenshots/the-long-way-home.jpg)
 ![A little sunshine](docs/screenshots/a-little-sunshine.jpg)
 
-**04 / The admiral’s day off — Hero view**
+**04 / The admiral’s day off — Close-up**
 
-![Hero view of The admiral’s day off, with a rubber-duck captain and its bathtub fleet](docs/screenshots/the-admirals-day-off.jpg)
+![Close-up of the rubber-duck captain’s face and smaller ducks, showing painted color and bristle detail](docs/screenshots/the-admirals-day-off.jpg)
 
-**05 / The crumb committee — Hero view**
+**05 / The crumb committee — Close-up**
 
-![Hero view of The crumb committee, with three pigeons meeting over a croissant on a rooftop](docs/screenshots/the-crumb-committee.jpg)
+![Close-up of the three pigeon faces around their rooftop table, showing painted feathers and brushwork](docs/screenshots/the-crumb-committee.jpg)
 
 ## Run
 
