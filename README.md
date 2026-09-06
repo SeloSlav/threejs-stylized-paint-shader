@@ -30,6 +30,7 @@ corepack pnpm install
 corepack pnpm dev
 corepack pnpm build
 corepack pnpm run test:paint
+corepack pnpm run test:brushwork
 ```
 
 The development gallery runs at `http://127.0.0.1:5174`.
@@ -43,7 +44,10 @@ restore authored compositions.
 
 Open **Palette** for **Impasto**, **Gouache**, and **Soft study** treatments,
 plus painterliness, pigment variation, relief, brush scale, lighting, and shadow
-controls. Toggle **Painterly shader** to compare the native materials. The
+controls. **Paint beyond the edges** adds controls for brushwork amount, silhouette
+splay, stroke size, and dry bristle tips. These replace the gallery's inactive
+outline sliders. Toggle **Whole-scene brushwork** to compare the surface material
+alone, or **Painterly shader** to compare the native materials. The
 palette starts collapsed on small screens, and the camera preserves horizontal
 framing in portrait layouts.
 
@@ -62,12 +66,18 @@ export are available at the bottom of the palette.
   response, edge breakup, and stylized shadow masks.
 - Per-material pigment emphasis controls both color variation and light breakup,
   allowing quiet background planes around strongly painted focal subjects.
+- Permanent, instanced brush strokes attach to the meshes. Each stroke has a
+  seeded surface position, normal, size, and direction. Lifted bristle tips
+  interrupt silhouettes; pigment comes from the stroke's fixed surface anchor.
+  Orbiting does not regenerate strokes, resample the rendered image, or turn
+  strokes toward the camera. Signs keep their original lettering.
 - The café uses painted emissive windows and lamps. Its cobalt/amber lighting,
   the bathroom’s mint/cream, the rooftop’s pink/violet, and the garden’s greens
   are authored separately and restore when switching scenes.
 - All six paintings render directly without a paint post-process. ACES is the
-  single tone-map owner. Outline infrastructure remains reusable but is disabled
-  for these compositions. No bloom pass is needed for the café lighting.
+  single tone-map owner. The gallery no longer allocates a composer or outline
+  targets. Shadows update when content changes, and hover hit-testing pauses
+  during orbit. No bloom pass is needed for the café lighting.
 
 `src/scenes/galleryKit.ts` compiles complete assemblies by pigment, preserving
 hard normals and individual UV islands. Nested local frames keep the birds,
@@ -103,11 +113,19 @@ Shared globals update all participating materials. Supply `emissive` and
 `emissiveIntensity` for luminous painted surfaces, or an albedo `surfaceMap` for
 existing assets. The shader module is independent of the gallery UI.
 
+For static meshes with solid source colors, `SurfaceBrushwork` adds the silhouette
+strokes. Call `addSurface(mesh, material)` once after building the mesh, then
+`sync(enabled, keyLight.intensity)` before rendering. `clearSurfaces()` releases
+the attached stroke geometry/materials when changing scenes. Settings exports
+include the `sceneBrushwork` controls. The two brushwork diagnostic views isolate
+deposits and coverage while retaining the original geometry as depth occluders.
+
 ## Verification and limits
 
 See [current gallery validation](docs/ATELIER_VALIDATION.md). The procedural
-scenes are static paintings with live orbit controls. Bristle relief changes
-normals, not silhouettes. The wet street’s reflections are authored paint marks;
+scenes are static paintings with live orbit controls. Material relief changes
+normals; the additional brush geometry changes silhouettes. Strokes naturally
+foreshorten and occlude as the camera moves. The wet street’s reflections are authored paint marks;
 bubbles are opaque painted rings. These are deliberate illustration choices.
 
 Released under the [MIT License](LICENSE).

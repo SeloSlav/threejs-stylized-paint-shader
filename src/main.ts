@@ -699,7 +699,10 @@ function activateScene(id: SceneId, immediate = false): void {
     if (buildResult instanceof Promise) {
       void buildResult
         .then(() => {
-          if (buildContext.isActive()) syncSceneBrushwork();
+          if (buildContext.isActive()) {
+            renderer.shadowMap.needsUpdate = true;
+            syncSceneBrushwork();
+          }
         })
         .catch((error) => {
           if (buildContext.isActive()) console.error(`[Paint/Lab] Could not build ${nextScene.label}.`, error);
@@ -1545,7 +1548,7 @@ function createInterfaceMarkup(): string {
             ${rangeMarkup('Impasto relief', 'impasto-strength', 'impastoStrength', 0, 1.5, 0.01)}
           </section>
           <details open class="scene-brush-section">
-            <summary><span>Paint beyond the edges</span><small>04</small></summary>
+            <summary><span>Paint beyond the edges</span><small>01</small></summary>
             <p class="finish-note">Loaded strokes follow the surfaces, catch their light, and leave bristle tips at the silhouette.</p>
             <div class="toggle-row"><label><input id="scene-brush-enabled" type="checkbox" checked /><span></span> Whole-scene brushwork</label></div>
             ${finishRangeMarkup('Scene brushwork', 'amount', 0, 1, 0.01)}
@@ -1558,7 +1561,7 @@ function createInterfaceMarkup(): string {
           </details>
 
           <details open>
-            <summary><span>Stroke field</span><small>01</small></summary>
+            <summary><span>Stroke field</span><small>02</small></summary>
             ${rangeMarkup('Brush scale', 'brush-scale', 'brushScale', 0.25, 8, 0.05)}
             ${rangeMarkup('Parallax depth', 'parallax-depth', 'parallaxDepth', 0, 0.12, 0.002)}
             ${rangeMarkup('Normal strength', 'normal-strength', 'normalStrength', 0, 1.8, 0.02)}
@@ -1567,7 +1570,7 @@ function createInterfaceMarkup(): string {
           </details>
 
           <details open>
-            <summary><span>Painted light</span><small>02</small></summary>
+            <summary><span>Painted light</span><small>03</small></summary>
             ${rangeMarkup('Shadow cut', 'shadow-threshold', 'shadowThreshold', -0.85, 0.25, 0.01)}
             ${rangeMarkup('Light cut', 'light-threshold', 'lightThreshold', 0.05, 0.9, 0.01)}
             ${rangeMarkup('Band feather', 'band-softness', 'bandSoftness', 0.005, 0.24, 0.005)}
@@ -1576,7 +1579,7 @@ function createInterfaceMarkup(): string {
           </details>
 
           <details open>
-            <summary><span>Oil &amp; relief</span><small>03</small></summary>
+            <summary><span>Oil &amp; relief</span><small>04</small></summary>
             ${rangeMarkup('Oil reflection', 'oil-strength', 'oilStrength', 0, 2.8, 0.01)}
             ${rangeMarkup('Reflection cut', 'oil-threshold', 'oilThreshold', -0.1, 0.9, 0.01)}
             ${rangeMarkup('Native sheen', 'native-sheen', 'nativeSheen', 0, 0.5, 0.005)}
@@ -1588,14 +1591,14 @@ function createInterfaceMarkup(): string {
           </details>
 
           <details open>
-            <summary><span>Stylized shadows</span><small>06</small></summary>
+            <summary><span>Stylized shadows</span><small>05</small></summary>
             ${rangeMarkup('Shadow erosion', 'shadow-erosion', 'shadowErosion', 0, 1, 0.01)}
             ${rangeMarkup('Mask cutoff', 'shadow-mask-offset', 'shadowMaskOffset', -0.4, 0.6, 0.01)}
             ${rangeMarkup('Shadow brush scale', 'shadow-brush-scale', 'shadowBrushScale', 0.35, 1.6, 0.01)}
           </details>
 
           <section class="diagnostics">
-            <div class="section-heading"><span>Diagnostics</span><small>07</small></div>
+            <div class="section-heading"><span>Diagnostics</span><small>06</small></div>
             <div class="texture-card">
               <canvas id="texture-preview" width="144" height="144"></canvas>
               <div>
