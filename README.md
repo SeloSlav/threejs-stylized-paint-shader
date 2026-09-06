@@ -20,9 +20,6 @@ removed, along with their model/texture downloads and the SeedThree dependency.
 Every current scene is procedural and deterministic. Signs are local canvas
 textures; the scenes need no downloaded models or image assets.
 
-![The long way home](docs/screenshots/the-long-way-home.jpg)
-![A little sunshine](docs/screenshots/a-little-sunshine.jpg)
-
 **04 / The admiral’s day off — Close-up**
 
 ![Close-up of the rubber-duck captain’s face and smaller ducks, showing painted color and bristle detail](docs/screenshots/the-admirals-day-off.jpg)
