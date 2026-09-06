@@ -1277,7 +1277,6 @@ function disposeSceneContent(): void {
   });
 
   sceneContentRoot.clear();
-  delete sceneContentRoot.userData.seedThree;
   for (const material of materials) material.dispose();
   for (const geometry of geometries) geometry.dispose();
   paintedObjects.length = 0;
@@ -1392,8 +1391,9 @@ function applyReferenceLook(resetOutlineColors = false): void {
 
   if (resetOutlineColors) applySceneOutlineDefaults(true);
 
-  requiredElement<HTMLElement>('#preset-eyebrow').textContent = 'OIL ON A DIGITAL CANVAS';
+  requiredElement<HTMLElement>('#preset-eyebrow').textContent = currentScene.eyebrow;
   requiredElement<HTMLElement>('#preset-name').textContent = currentScene.title;
+  requiredElement<HTMLElement>('#scene-story').textContent = currentScene.description;
   syncOutlinePasses();
 }
 
@@ -1595,6 +1595,13 @@ function bindInterface(): void {
 
   requiredElement<HTMLSelectElement>('#scene-select').addEventListener('change', (event) => {
     activateScene((event.target as HTMLSelectElement).value as SceneId);
+  });
+  document.querySelectorAll<HTMLButtonElement>('[data-gallery-step]').forEach(button => {
+    button.addEventListener('click', () => {
+      const index = PAINT_SCENES.findIndex(painting => painting.id === currentScene.id);
+      const next = (index + Number(button.dataset.galleryStep) + PAINT_SCENES.length) % PAINT_SCENES.length;
+      activateScene(PAINT_SCENES[next]!.id);
+    });
   });
 
   requiredElement<HTMLButtonElement>('#shader-toggle').addEventListener('click', () => {
@@ -1886,9 +1893,7 @@ function updateObjectLabel(): void {
     return;
   }
   label.textContent = hoveredMesh?.userData.paintLabel
-    ?? (currentScene.id === 'material-study'
-      ? 'Click an object to move · drag to orbit · scroll to zoom'
-      : 'Left drag to orbit · right drag to pan · scroll to zoom');
+    ?? 'Drag to orbit · right drag to pan · scroll to explore';
   label.classList.toggle('is-object', Boolean(hoveredMesh));
   label.classList.remove('is-selected');
 }
@@ -2117,12 +2122,16 @@ function createInterfaceMarkup(): string {
               <h1>Paint / Lab<span class="brand-edition">THE ATELIER COLLECTION</span></h1>
             </div>
           </div>
-          <label class="scene-picker" for="scene-select">
-            <span>Active scene</span>
-            <select id="scene-select" aria-label="Choose scene">
-              ${PAINT_SCENES.map((paintScene) => `<option value="${paintScene.id}">${paintScene.label}</option>`).join('')}
-            </select>
-          </label>
+          <div class="gallery-picker">
+            <button type="button" data-gallery-step="-1" aria-label="Previous painting">‹</button>
+            <label class="scene-picker" for="scene-select">
+              <span>The collection</span>
+              <select id="scene-select" aria-label="Choose scene">
+                ${PAINT_SCENES.map((paintScene) => `<option value="${paintScene.id}">${paintScene.label}</option>`).join('')}
+              </select>
+            </label>
+            <button type="button" data-gallery-step="1" aria-label="Next painting">›</button>
+          </div>
           <button
             id="shader-toggle"
             class="shader-toggle is-active"
@@ -2138,6 +2147,7 @@ function createInterfaceMarkup(): string {
         <div class="shot-caption">
           <p id="preset-eyebrow" class="kicker">TRUE SHADOW / WHITE PAINT</p>
           <p id="preset-name">Reference paint</p>
+          <p id="scene-story"></p>
           <span id="object-label">Left drag to orbit · right drag to pan · scroll to zoom</span>
         </div>
 

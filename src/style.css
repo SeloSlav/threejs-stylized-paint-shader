@@ -1077,6 +1077,16 @@ select {
 .shot-caption { pointer-events: none; padding: 17px 20px; background: linear-gradient(110deg, #222921b8, #22292130); border-left: 2px solid #e2c087; border-radius: 0 3px 3px 0; max-width: calc(100% - 48px); }
 #preset-name { font: italic 38px Georgia, 'Times New Roman', serif; letter-spacing: -.035em; }
 #preset-eyebrow { color: #e7c998; font-size: 8px; }
+#scene-story { max-width: 440px; margin: 9px 0; font: 12px/1.6 Georgia, 'Times New Roman', serif; color: #e8dfcf; text-shadow: 0 1px 8px #131b19; }
+.gallery-picker { display: flex; align-items: stretch; gap: 3px; }
+.gallery-picker .scene-picker { flex: 1; min-width: 0; }
+.gallery-picker > button { width: 28px; padding: 0; border: 1px solid #ded3bd25; border-radius: 3px; background: #252823de; color: #efdfbf; font: 25px Georgia, serif; cursor: pointer; }
+.gallery-picker > button:hover { background: #625748; }
+.gallery-picker > button:focus-visible { outline: 2px solid #e7c998; outline-offset: 2px; }
+@media (max-width: 600px) {
+  #scene-story { max-width: 310px; font-size: 10px; margin: 7px 0; }
+  .gallery-picker > button { width: 26px; }
+}
 #object-label { font-size: 9px; color: #e8e0d1; }
 .runtime-pill { opacity: .6; font-size: 8px; }
 .primary-button { background: #d6af74 !important; color: #1c241f !important; }

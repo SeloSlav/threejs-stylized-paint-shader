@@ -123,7 +123,58 @@ export const PAINT_SCENES: readonly PaintSceneDefinition[] = [
       far: { position: new THREE.Vector3(11.5, 9, 20), target: new THREE.Vector3(-0.25, 2.2, -0.35) },
     }, build: buildStillLifeScene,
   },
-// STORY_SCENES
+  {
+    id: 'night-cafe', label: '03 / One more espresso',
+    description: 'Midnight blue, golden windows, rain-polished cobbles. The last customer has whiskers.',
+    eyebrow: 'PAINTING 03 · THE NIGHT CAFÉ', title: 'One more espresso',
+    preferredPreset: 'noir', orbitDistance: { min: 5, max: 48 },
+    lighting: { top: '#101c38', horizon: '#293a58', abyss: '#18283f', fog: '#1f304c', fogDensity: 0.012, key: '#bac7df', keyIntensity: 2, fill: '#566a95', fillIntensity: 0.3, exposure: 0.95 },
+    controlOverrides: { brushScale: 0.85, oilStrength: 0, edgeErosion: 0, rimStrength: 0.025, shadowThreshold: -0.15, lightThreshold: 0.65, shadowValue: 0.12, midtoneValue: 0.48, outlineWidth: 0, outerRimWidth: 0 },
+    cameraBookmarks: {
+      near: { position: new THREE.Vector3(5, 4.5, 10), target: new THREE.Vector3(-2.2, 2.1, 1) },
+      design: { position: new THREE.Vector3(13, 9, 20), target: new THREE.Vector3(0, 3.1, -0.2) },
+      far: { position: new THREE.Vector3(20, 13, 30), target: new THREE.Vector3(0, 3.5, -2) },
+    }, build: buildNightCafe,
+  },
+  {
+    id: 'duck-admiral', label: '04 / The admiral’s day off',
+    description: 'One very important rubber duck. A claw-foot flagship. Absolutely no responsibilities.',
+    eyebrow: 'PAINTING 04 · BATH-TIME COMMAND', title: 'The admiral’s day off',
+    preferredPreset: 'high-key', orbitDistance: { min: 4, max: 32 },
+    lighting: { top: '#728d84', horizon: '#b6d0b7', abyss: '#acb2a0', fog: '#acc5b3', fogDensity: 0.006, key: '#ffe3b6', keyIntensity: 3, fill: '#9cbace', fillIntensity: 0.6, exposure: 1.05 },
+    controlOverrides: { brushScale: 0.9, oilStrength: 0.03, edgeErosion: 0, rimStrength: 0.035, shadowThreshold: -0.36, lightThreshold: 0.58, shadowValue: 0.22, midtoneValue: 0.66, outlineWidth: 0, outerRimWidth: 0 },
+    cameraBookmarks: {
+      near: { position: new THREE.Vector3(6, 5, 8), target: new THREE.Vector3(-0.4, 2.6, 0) },
+      design: { position: new THREE.Vector3(10, 7.6, 13), target: new THREE.Vector3(0, 2.4, 0) },
+      far: { position: new THREE.Vector3(15, 11, 20), target: new THREE.Vector3(0, 2, -0.5) },
+    }, build: buildDuckAdmiral,
+  },
+  {
+    id: 'pigeon-meeting', label: '05 / The crumb committee',
+    description: 'A rooftop board meeting. Three pigeons. One croissant. Extremely serious business.',
+    eyebrow: 'PAINTING 05 · ROOFTOP AFFAIRS', title: 'The crumb committee',
+    preferredPreset: 'sky', orbitDistance: { min: 4, max: 38 },
+    lighting: { top: '#8f7ca8', horizon: '#efb392', abyss: '#b49398', fog: '#d5a5a7', fogDensity: 0.015, key: '#ffdaa5', keyIntensity: 3, fill: '#b8b0e5', fillIntensity: 0.55, exposure: 1.04 },
+    controlOverrides: { brushScale: 0.9, oilStrength: 0, edgeErosion: 0, rimStrength: 0.03, shadowThreshold: -0.38, lightThreshold: 0.57, shadowValue: 0.22, midtoneValue: 0.66, outlineWidth: 0, outerRimWidth: 0 },
+    cameraBookmarks: {
+      near: { position: new THREE.Vector3(5.7, 4.1, 8), target: new THREE.Vector3(0, 2.15, 0.3) },
+      design: { position: new THREE.Vector3(8.8, 6, 12.6), target: new THREE.Vector3(0, 2.1, 0) },
+      far: { position: new THREE.Vector3(14, 10, 21), target: new THREE.Vector3(0, 1.8, -2) },
+    }, build: buildPigeonMeeting,
+  },
+  {
+    id: 'snail-race', label: '06 / The grand snail prix',
+    description: 'A garden race of epic proportions, proceeding at approximately the speed of a Tuesday.',
+    eyebrow: 'PAINTING 06 · SLOW SPORT', title: 'The grand snail prix',
+    preferredPreset: 'verdant', orbitDistance: { min: 4, max: 46 },
+    lighting: { top: '#79978c', horizon: '#d7d9ad', abyss: '#6e876d', fog: '#adbc91', fogDensity: 0.018, key: '#ffe8b8', keyIntensity: 3.1, fill: '#a7c6c4', fillIntensity: 0.55, exposure: 1.03 },
+    controlOverrides: { brushScale: 0.9, oilStrength: 0.02, edgeErosion: 0, rimStrength: 0.03, shadowThreshold: -0.36, lightThreshold: 0.56, shadowValue: 0.22, midtoneValue: 0.66, outlineWidth: 0, outerRimWidth: 0 },
+    cameraBookmarks: {
+      near: { position: new THREE.Vector3(5.5, 4.5, 9), target: new THREE.Vector3(-1, 1.1, 0.5) },
+      design: { position: new THREE.Vector3(11, 8.5, 18), target: new THREE.Vector3(0, 1.6, -1.4) },
+      far: { position: new THREE.Vector3(18, 13, 28), target: new THREE.Vector3(0, 1.3, -2) },
+    }, build: buildSnailRace,
+  },
 ] as const;
 
 export function paintSceneById(id: string): PaintSceneDefinition | undefined {

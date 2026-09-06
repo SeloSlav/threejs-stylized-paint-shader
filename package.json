@@ -11,7 +11,6 @@
     "preview": "vite preview --host 127.0.0.1 --port 4173 --strictPort"
   },
   "dependencies": {
-    "seedthree": "github:SeloSlav/SeedThree#4c20609db11f99605018e94cf7833351692d569a",
     "three": "0.185.1"
   },
   "devDependencies": {
