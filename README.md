@@ -23,6 +23,14 @@ textures; the scenes need no downloaded models or image assets.
 ![The long way home](docs/screenshots/the-long-way-home.jpg)
 ![A little sunshine](docs/screenshots/a-little-sunshine.jpg)
 
+**04 / The admiral’s day off — Hero view**
+
+![Hero view of The admiral’s day off, with a rubber-duck captain and its bathtub fleet](docs/screenshots/the-admirals-day-off.jpg)
+
+**05 / The crumb committee — Hero view**
+
+![Hero view of The crumb committee, with three pigeons meeting over a croissant on a rooftop](docs/screenshots/the-crumb-committee.jpg)
+
 ## Run
 
 ```bash
