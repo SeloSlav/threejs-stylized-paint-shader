@@ -5,10 +5,7 @@ import {
   type TransformControlsMode,
 } from 'three/addons/controls/TransformControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
-import { OutlinePass } from 'three/addons/postprocessing/OutlinePass.js';
-import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { SurfaceBrushwork, SCENE_BRUSH_DEFAULTS, type SceneBrushSettings } from './SurfaceBrushwork.ts';
 import './style.css';
 import {
   PAINT_DEBUG_MODES,
@@ -61,15 +58,7 @@ interface PaintedObject {
   material: PainterlyMaterial;
   nativeMaterial: THREE.Material;
   depthMaterial: THREE.MeshDepthMaterial;
-  outlineEnabled: boolean;
-  screenOutlineEnabled: boolean;
-  shells: THREE.ShaderMaterial[];
   paletteIndex: number | null;
-  outlinePalette: {
-    primary: THREE.Color;
-    secondary: THREE.Color;
-  };
-  outlinePaletteWeight: number;
   label: string;
   spin: THREE.Vector3;
   initialPosition: THREE.Vector3;
@@ -79,7 +68,8 @@ interface PaintedObject {
 
 interface PaintLabSettingsExport {
   format: 'paint-lab-settings';
-  version: 3;
+  version: 4;
+  sceneBrushwork: SceneBrushSettings & { enabled: boolean };
   exportedAt: string;
   threeRevision: string;
   scene: {
@@ -94,10 +84,6 @@ interface PaintLabSettingsExport {
   paintTexture: PaintTextureMetadata;
   pigmentTexture: { seed: number; size: number; channels: string[] };
   controls: PainterlyControlValues;
-  outlineColors: {
-    primary: string;
-    secondary: string;
-  };
 }
 
 const PRESETS: Record<PresetName, Preset> = {
@@ -370,6 +356,8 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = PRESETS.noir.exposure;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;
+renderer.shadowMap.autoUpdate = false;
+renderer.shadowMap.needsUpdate = true;
 renderer.domElement.setAttribute('aria-label', 'Interactive painterly shader scene');
 viewport.prepend(renderer.domElement);
 
@@ -407,7 +395,10 @@ transformControls.addEventListener('dragging-changed', (event) => {
   controls.enabled = !dragging;
   if (dragging) cameraGoal = null;
 });
-transformControls.addEventListener('objectChange', updateTransformReadout);
+transformControls.addEventListener('objectChange', () => {
+  updateTransformReadout();
+  renderer.shadowMap.needsUpdate = true;
+});
 
 const room = new RoomEnvironment();
 const pmrem = new THREE.PMREMGenerator(renderer);
@@ -475,476 +466,13 @@ paintGlobals.lightDirection.value = keyLight.position
 
 const paintedObjects: PaintedObject[] = [];
 const animatedObjects: PaintedObject[] = [];
-const outlinedObjects: THREE.Object3D[] = [];
-let outlineObjectSerial = 0;
-const outlineGroupIds = new Map<string, number>();
 const sceneFrameUpdaters: Array<(deltaSeconds: number) => void> = [];
 const sceneContentRoot = new THREE.Group();
 sceneContentRoot.name = 'Active paint scene';
 scene.add(sceneContentRoot);
 
-const composer = new EffectComposer(renderer);
-composer.setPixelRatio(renderer.getPixelRatio());
-composer.setSize(Math.max(viewport.clientWidth, 1), Math.max(viewport.clientHeight, 1));
-composer.addPass(new RenderPass(scene, camera));
-
-// Three's stock OutlinePass compiles only four blur taps, which made the
-// upper half of the width slider visually identical. A larger fixed kernel
-// lets the authored 0..0.24 range remain responsive without touching meshes.
-const COMPLEX_OUTLINE_MAX_RADIUS = 16;
-
-const outlineRimPass = new OutlinePass(
-  new THREE.Vector2(Math.max(viewport.clientWidth, 1), Math.max(viewport.clientHeight, 1)),
-  scene,
-  camera,
-  outlinedObjects,
-);
-outlineRimPass.edgeStrength = 3.6;
-outlineRimPass.edgeGlow = 0;
-outlineRimPass.edgeThickness = 1;
-outlineRimPass.pulsePeriod = 0;
-configureOutlineBlurRadius(outlineRimPass);
-configurePainterlyOutlineComposite(
-  outlineRimPass,
-  'rim',
-  0.23,
-  new THREE.Vector2(),
-  0,
-);
-composer.addPass(outlineRimPass);
-
-const outlineSecondaryPass = new OutlinePass(
-  new THREE.Vector2(Math.max(viewport.clientWidth, 1), Math.max(viewport.clientHeight, 1)),
-  scene,
-  camera,
-  outlinedObjects,
-);
-outlineSecondaryPass.edgeStrength = 2.4;
-outlineSecondaryPass.edgeGlow = 0;
-outlineSecondaryPass.edgeThickness = 2;
-outlineSecondaryPass.pulsePeriod = 0;
-configureOutlineBlurRadius(outlineSecondaryPass);
-configurePainterlyOutlineComposite(
-  outlineSecondaryPass,
-  'outline',
-  0.43,
-  new THREE.Vector2(-0.52, 0.55).normalize(),
-  1.35,
-);
-composer.addPass(outlineSecondaryPass);
-
-const outlinePrimaryPass = new OutlinePass(
-  new THREE.Vector2(Math.max(viewport.clientWidth, 1), Math.max(viewport.clientHeight, 1)),
-  scene,
-  camera,
-  outlinedObjects,
-);
-outlinePrimaryPass.edgeStrength = 4.2;
-outlinePrimaryPass.edgeGlow = 0;
-outlinePrimaryPass.edgeThickness = 1;
-outlinePrimaryPass.pulsePeriod = 0;
-configureOutlineBlurRadius(outlinePrimaryPass);
-configurePainterlyOutlineComposite(
-  outlinePrimaryPass,
-  'outline',
-  0.07,
-  new THREE.Vector2(0.85, 0.28).normalize(),
-  1,
-);
-composer.addPass(outlinePrimaryPass);
-composer.addPass(new OutputPass());
-
-function configureOutlineBlurRadius(pass: OutlinePass): void {
-  pass.separableBlurMaterial1.defines.MAX_RADIUS = COMPLEX_OUTLINE_MAX_RADIUS;
-  pass.separableBlurMaterial2.defines.MAX_RADIUS = COMPLEX_OUTLINE_MAX_RADIUS;
-  pass.separableBlurMaterial1.needsUpdate = true;
-  pass.separableBlurMaterial2.needsUpdate = true;
-}
-
-function configurePainterlyOutlineComposite(
-  pass: OutlinePass,
-  role: 'rim' | 'outline',
-  phase: number,
-  direction: THREE.Vector2,
-  offsetMultiplier: number,
-): void {
-  pass.patternTexture = activeTexture.texture;
-  const maskMaterial = pass.prepareMaskMaterial;
-  maskMaterial.uniforms.uPaintMap = paintGlobals.paintMap;
-  maskMaterial.uniforms.uBrushScale = paintGlobals.brushScale;
-  maskMaterial.uniforms.uObjectTextureScale = { value: 0.26 };
-  maskMaterial.uniforms.uShellPhase = { value: phase };
-  maskMaterial.uniforms.uObjectId = { value: 0 };
-  maskMaterial.vertexShader = /* glsl */ `
-    #include <common>
-    #include <batching_pars_vertex>
-    #include <morphtarget_pars_vertex>
-    #include <skinning_pars_vertex>
-
-    varying vec4 projTexCoord;
-    varying vec4 vPosition;
-    varying vec3 vPaintObjectPosition;
-    varying vec3 vPaintObjectNormal;
-    uniform mat4 textureMatrix;
-
-    void main() {
-      #include <batching_vertex>
-      #include <beginnormal_vertex>
-      #include <morphinstance_vertex>
-      #include <morphnormal_vertex>
-      #include <skinbase_vertex>
-      #include <skinnormal_vertex>
-      #include <begin_vertex>
-      #include <morphtarget_vertex>
-      #include <skinning_vertex>
-      #include <project_vertex>
-
-      // Store bind/rest-pose coordinates in the mask. They interpolate across
-      // the animated surface like UVs, so outline breakup cannot swim while a
-      // skinned character moves through its walk cycle.
-      vPaintObjectPosition = position;
-      vPaintObjectNormal = normalize( normal );
-      vPosition = mvPosition;
-      vec4 worldPosition = vec4( transformed, 1.0 );
-      #ifdef USE_INSTANCING
-        worldPosition = instanceMatrix * worldPosition;
-      #endif
-      worldPosition = modelMatrix * worldPosition;
-      projTexCoord = textureMatrix * worldPosition;
-    }
-  `;
-  maskMaterial.fragmentShader = /* glsl */ `
-    #include <packing>
-
-    uniform sampler2D depthTexture;
-    uniform sampler2D uPaintMap;
-    uniform vec2 cameraNearFar;
-    uniform float uBrushScale;
-    uniform float uObjectTextureScale;
-    uniform float uShellPhase;
-    uniform float uObjectId;
-    varying vec4 vPosition;
-    varying vec4 projTexCoord;
-    varying vec3 vPaintObjectPosition;
-    varying vec3 vPaintObjectNormal;
-
-    vec4 samplePaintTriplanar( vec3 coordinate, vec3 normalObject ) {
-      vec3 weight = pow( abs( normalize( normalObject ) ), vec3( 5.0 ) );
-      weight /= max( weight.x + weight.y + weight.z, 0.00001 );
-      vec3 axisSign = sign( normalObject );
-      vec2 uvX = coordinate.zy * vec2( axisSign.x, 1.0 );
-      vec2 uvY = coordinate.xz * vec2( axisSign.y, 1.0 );
-      vec2 uvZ = coordinate.xy * vec2( -axisSign.z, 1.0 );
-      return texture2D( uPaintMap, uvX ) * weight.x
-        + texture2D( uPaintMap, uvY ) * weight.y
-        + texture2D( uPaintMap, uvZ ) * weight.z;
-    }
-
-    void main() {
-      float depth = unpackRGBAToDepth(
-        texture2DProj( depthTexture, projTexCoord )
-      );
-      float viewZ = -perspectiveDepthToViewZ(
-        depth,
-        cameraNearFar.x,
-        cameraNearFar.y
-      );
-      float depthTest = ( -vPosition.z > viewZ ) ? 1.0 : 0.0;
-
-      vec3 coordinate = vPaintObjectPosition
-        * uObjectTextureScale
-        * uBrushScale
-        * 0.74;
-      coordinate += vec3( 0.173, 0.397, 0.619 ) * uShellPhase;
-      vec4 broadSample = samplePaintTriplanar(
-        coordinate,
-        vPaintObjectNormal
-      );
-      vec4 toothSample = samplePaintTriplanar(
-        coordinate * 1.83
-          + vec3( 0.311, 0.127, 0.491 ) * ( uShellPhase + 1.0 ),
-        vPaintObjectNormal
-      );
-      float warp = ( broadSample.r - 0.5 ) * 5.0
-        + ( broadSample.g - 0.5 ) * 2.5;
-      vec3 tangentAxis = normalize(
-        vec3( 0.71, 1.93, -1.17 ) + vPaintObjectNormal * 0.21
-      );
-      float combCoordinate = dot(
-        vPaintObjectPosition * max( uObjectTextureScale, 0.05 ),
-        tangentAxis
-      );
-      float coarse = 0.5 + 0.5 * sin(
-        combCoordinate * 12.0 + warp * 0.58 + uShellPhase * 5.17
-      );
-      float fine = 0.5 + 0.5 * sin(
-        combCoordinate * 89.0 - warp * 0.81 + uShellPhase * 17.3
-      );
-      float comb = clamp(
-        pow( coarse, 1.45 ) * 0.74 + pow( fine, 6.0 ) * 0.34,
-        0.0,
-        1.0
-      );
-      float carrier = smoothstep(
-        0.06,
-        0.42,
-        broadSample.b + toothSample.a * 0.22
-      );
-      float tooth = smoothstep(
-        0.12,
-        0.68,
-        toothSample.a + broadSample.b * 0.28
-      );
-      float brushLoad = clamp(
-        carrier * mix( 0.72, 1.18, tooth ) + comb * 0.16,
-        0.0,
-        1.0
-      );
-      float deposit = clamp(
-        broadSample.b * 0.62 + toothSample.a * 0.16
-          + smoothstep( 0.36, 0.64, comb ) * 0.30,
-        0.0,
-        1.0
-      );
-      gl_FragColor = vec4( 0.0, depthTest, brushLoad, uObjectId );
-    }
-  `;
-  maskMaterial.onBeforeRender = (_renderer, _scene, _camera, _geometry, object) => {
-    if (!(object instanceof THREE.Mesh)) return;
-    const objectMaterial = Array.isArray(object.material)
-      ? object.material[0]
-      : object.material;
-    const projectionScale = (objectMaterial as PainterlyMaterial | undefined)
-      ?.paintProjectionScale?.value;
-    maskMaterial.uniforms.uObjectTextureScale.value = typeof projectionScale === 'number'
-      ? projectionScale
-      : 0.26;
-    maskMaterial.uniforms.uObjectId.value = typeof object.userData.paintOutlineId === 'number'
-      ? object.userData.paintOutlineId
-      : 0;
-    maskMaterial.uniformsNeedUpdate = true;
-  };
-  maskMaterial.needsUpdate = true;
-
-  const edgeMaterial = pass.edgeDetectionMaterial;
-  edgeMaterial.fragmentShader = /* glsl */ `
-    varying vec2 vUv;
-
-    uniform sampler2D maskTexture;
-    uniform vec2 texSize;
-    uniform vec3 visibleEdgeColor;
-
-    void main() {
-      vec2 invSize = 1.0 / texSize;
-      vec4 uvOffset = vec4( 1.0, 0.0, 0.0, 1.0 )
-        * vec4( invSize, invSize );
-      vec4 c1 = texture2D( maskTexture, vUv + uvOffset.xy );
-      vec4 c2 = texture2D( maskTexture, vUv - uvOffset.xy );
-      vec4 c3 = texture2D( maskTexture, vUv + uvOffset.yw );
-      vec4 c4 = texture2D( maskTexture, vUv - uvOffset.yw );
-
-      float diff1 = ( c1.r - c2.r ) * 0.5;
-      float diff2 = ( c3.r - c4.r ) * 0.5;
-      float silhouetteEdge = length( vec2( diff1, diff2 ) );
-      float insideHorizontal = ( 1.0 - step( 0.5, c1.r ) )
-        * ( 1.0 - step( 0.5, c2.r ) );
-      float insideVertical = ( 1.0 - step( 0.5, c3.r ) )
-        * ( 1.0 - step( 0.5, c4.r ) );
-      float objectEdge = max(
-        smoothstep( 0.012, 0.06, abs( c1.a - c2.a ) ) * insideHorizontal,
-        smoothstep( 0.012, 0.06, abs( c3.a - c4.a ) ) * insideVertical
-      );
-      float edge = max( silhouetteEdge, objectEdge * 0.42 );
-      float visibilityFactor = min(
-        min( c1.g, c2.g ),
-        min( c3.g, c4.g )
-      );
-      // OutlinePass normally colors occluded edges with hiddenEdgeColor. A
-      // black hidden edge still carries alpha, however, so our normal-blended
-      // painterly composite was painting those edges through the model. Hidden
-      // samples must contribute no color *and* no alpha.
-      float visibleEdge = 1.0 - step( 0.001, visibilityFactor );
-      gl_FragColor = vec4( visibleEdgeColor, 1.0 ) * edge * visibleEdge;
-    }
-  `;
-  edgeMaterial.needsUpdate = true;
-
-  const material = pass.overlayMaterial;
-  material.blending = THREE.NormalBlending;
-  material.uniforms.uResolution = paintGlobals.viewportSize;
-  material.uniforms.uOutlineBreakup = paintGlobals.outlineBreakup;
-  material.uniforms.uOutlineJitter = paintGlobals.outlineJitter;
-  material.uniforms.uOutlineWidthVariation = paintGlobals.outlineWidthVariation;
-  material.uniforms.uOutlineStrokeWidth = paintGlobals.outlineStrokeWidth;
-  material.uniforms.uOutlineZoomScale = paintGlobals.outlineZoomScale;
-  material.uniforms.uOutlineRadius = { value: 1 };
-  material.uniforms.uRimContinuity = paintGlobals.rimContinuity;
-  material.uniforms.uEdgeBristleReach = paintGlobals.edgeBristleReach;
-  material.uniforms.uIsRim = { value: role === 'rim' ? 1 : 0 };
-  material.uniforms.uLayerDirection = { value: direction };
-  material.uniforms.uLayerOffsetMultiplier = { value: offsetMultiplier };
-  material.fragmentShader = /* glsl */ `
-    varying vec2 vUv;
-
-    uniform sampler2D maskTexture;
-    uniform sampler2D edgeTexture1;
-    uniform float edgeStrength;
-    uniform vec2 uResolution;
-    uniform float uOutlineBreakup;
-    uniform float uOutlineJitter;
-    uniform float uOutlineWidthVariation;
-    uniform float uOutlineStrokeWidth;
-    uniform float uOutlineZoomScale;
-    uniform float uOutlineRadius;
-    uniform float uRimContinuity;
-    uniform float uEdgeBristleReach;
-    uniform float uIsRim;
-    uniform vec2 uLayerDirection;
-    uniform float uLayerOffsetMultiplier;
-
-    vec3 sampleAnchoredPaintField(
-      vec2 uv,
-      vec2 resolution,
-      float radius
-    ) {
-      vec2 field = vec2( 0.0 );
-      float weight = 0.0;
-      for ( int directionIndex = 0; directionIndex < 8; directionIndex ++ ) {
-        float angle = float( directionIndex ) * 0.78539816339;
-        vec2 direction = vec2( cos( angle ), sin( angle ) );
-        vec4 surfaceSample = texture2D(
-          maskTexture,
-          uv + direction * radius / resolution
-        );
-        float sourcePixel = ( 1.0 - step( 0.5, surfaceSample.r ) )
-          * ( 1.0 - step( 0.5, surfaceSample.g ) );
-        field += surfaceSample.ba * sourcePixel;
-        weight += sourcePixel;
-      }
-      return vec3( field, weight );
-    }
-
-    float sampleInternalObjectEdge( vec2 uv, vec2 resolution ) {
-      vec2 stepUv = vec2( 1.5 ) / resolution;
-      vec4 left = texture2D( maskTexture, uv - vec2( stepUv.x, 0.0 ) );
-      vec4 right = texture2D( maskTexture, uv + vec2( stepUv.x, 0.0 ) );
-      vec4 down = texture2D( maskTexture, uv - vec2( 0.0, stepUv.y ) );
-      vec4 up = texture2D( maskTexture, uv + vec2( 0.0, stepUv.y ) );
-      float insideHorizontal = ( 1.0 - step( 0.5, left.r ) )
-        * ( 1.0 - step( 0.5, right.r ) );
-      float insideVertical = ( 1.0 - step( 0.5, down.r ) )
-        * ( 1.0 - step( 0.5, up.r ) );
-      return max(
-        smoothstep( 0.012, 0.06, abs( left.a - right.a ) ) * insideHorizontal,
-        smoothstep( 0.012, 0.06, abs( down.a - up.a ) ) * insideVertical
-      );
-    }
-
-    void main() {
-      vec4 maskColor = texture2D( maskTexture, vUv );
-      vec2 safeResolution = max( uResolution, vec2( 1.0 ) );
-      float jitterAmount = uOutlineJitter / 0.08;
-      vec2 layerOffset = uLayerDirection
-        * jitterAmount
-        * 2.4
-        * uOutlineZoomScale
-        * uLayerOffsetMultiplier
-        / safeResolution;
-      vec4 edgeValue = texture2D( edgeTexture1, vUv - layerOffset );
-      // A Gaussian line loses amplitude as its radius grows. Normalize only
-      // beyond the stock four-pixel kernel so the original low-width look is
-      // unchanged while large radii still cross the painterly loop threshold.
-      float edgeMagnitude = edgeValue.a * max( uOutlineRadius / 4.0, 1.0 );
-
-      // Pull the paint field from nearby source-surface pixels in the solid
-      // silhouette mask. The field therefore follows the object as it moves
-      // and rotates, while the outline itself is still dilated in screen space.
-      vec3 anchoredField = sampleAnchoredPaintField(
-        vUv,
-        safeResolution,
-        1.5 * uOutlineZoomScale
-      );
-      if ( anchoredField.z < 0.5 ) anchoredField = sampleAnchoredPaintField(
-        vUv,
-        safeResolution,
-        4.0 * uOutlineZoomScale
-      );
-      if ( anchoredField.z < 0.5 ) anchoredField = sampleAnchoredPaintField(
-        vUv,
-        safeResolution,
-        7.5 * uOutlineZoomScale
-      );
-      if ( anchoredField.z < 0.5 ) anchoredField = sampleAnchoredPaintField(
-        vUv,
-        safeResolution,
-        11.0 * uOutlineZoomScale
-      );
-      float brushLoad = anchoredField.z > 0.0
-        ? anchoredField.x / anchoredField.z
-        : 0.72;
-      float deposit = clamp( brushLoad * 0.86, 0.0, 1.0 );
-
-      // Draw a narrow isocontour through the dilation field instead of filling
-      // the complete expanded mask. Brush load moves that contour inward and
-      // outward, recreating the old wandering loop while the maximum envelope
-      // remains bounded and independent of source triangles.
-      float loopPosition = mix(
-        0.115,
-        0.03,
-        mix( 0.5, brushLoad, uOutlineWidthVariation )
-      );
-      float strokeHalfWidth = mix(
-        0.005,
-        0.018,
-        clamp( uOutlineStrokeWidth / 3.0, 0.0, 1.0 )
-      );
-      float edgeAntialias = max( fwidth( edgeMagnitude ) * 1.35, 0.0025 );
-      float outlineBand = 1.0 - smoothstep(
-        strokeHalfWidth,
-        strokeHalfWidth + edgeAntialias,
-        abs( edgeMagnitude - loopPosition )
-      );
-      float rimLow = mix( 0.66, 0.28, uRimContinuity );
-      float rimHigh = mix( 0.84, 0.48, uRimContinuity );
-      float rimInk = smoothstep(
-        rimLow,
-        rimHigh,
-        brushLoad + deposit * 0.24
-      );
-      float attachedRimBand = smoothstep( 0.012, 0.095, edgeMagnitude );
-      float attachedRimCoverage = attachedRimBand * mix(
-        1.0,
-        rimInk,
-        uEdgeBristleReach * 0.88
-      );
-      float brushCoverage = smoothstep(
-        0.38,
-        0.72,
-        brushLoad
-      );
-      float continuity = mix(
-        1.0,
-        brushCoverage,
-        uOutlineBreakup * 0.86
-      );
-      float loopCoverage = outlineBand * continuity;
-      float edgeDomain = max(
-        maskColor.r,
-        sampleInternalObjectEdge( vUv, safeResolution )
-      );
-      float coverage = mix( loopCoverage, attachedRimCoverage, uIsRim )
-        * edgeDomain;
-      if ( coverage < 0.46 ) discard;
-
-      vec3 inkColor = edgeValue.rgb / max( edgeValue.a, 0.00001 );
-      inkColor *= mix( 0.62, 1.38, deposit );
-      float opacity = smoothstep( 0.46, 0.64, coverage )
-        * clamp( edgeStrength * 0.36, 0.0, 1.0 );
-      gl_FragColor = vec4( inkColor, opacity );
-    }
-  `;
-  material.needsUpdate = true;
-}
+const sceneBrushwork = new SurfaceBrushwork(paintGlobals);
+let sceneBrushEnabled = true;
 
 let currentPreset: PresetName = REFERENCE_LOOK_ID;
 let currentScene: PaintSceneDefinition = initialScene;
@@ -959,12 +487,14 @@ let statsElapsed = 0;
 let fpsEstimate = 60;
 let hoveredMesh: THREE.Object3D | null = null;
 let selectedPaintedObject: PaintedObject | null = null;
-let outlineColorsManuallyOverridden = false;
 const pointerDownClient = new THREE.Vector2();
 let pointerGestureMoved = false;
 let pointerGestureStartedOnGizmo = false;
 
 const pointer = new THREE.Vector2(2, 2);
+let hoverDirty = true;
+let orbiting = false;
+let lastHoverCheck = 0;
 const raycaster = new THREE.Raycaster();
 let previousFrameTime = performance.now();
 let sceneActivationId = 0;
@@ -1020,22 +550,12 @@ function createPaintedObject(
     envMapIntensity: 0.82,
     side: options.side,
   });
+  material.userData.pigmentContrast = options.pigmentContrast ?? 0.55;
   const nativeMaterial = options.nativeMaterial ?? createNativeMaterial(options, palette);
   const base = new THREE.Mesh(geometry, material);
   base.castShadow = true;
   base.receiveShadow = true;
   base.userData.paintLabel = options.label;
-  const outlineRequested = options.shells !== false || options.screenOutline === true;
-  let outlineId = options.outlineGroup
-    ? outlineGroupIds.get(options.outlineGroup)
-    : undefined;
-  if (outlineId === undefined) {
-    outlineObjectSerial += 1;
-    outlineId = (((outlineObjectSerial * 73) % 251) + 1) / 252;
-    if (options.outlineGroup) outlineGroupIds.set(options.outlineGroup, outlineId);
-  }
-  base.userData.paintOutlineId = outlineId;
-
   const depthMaterial = createPainterlyDepthMaterial(
     paintGlobals,
     options.objectTextureScale ?? 0.26,
@@ -1052,8 +572,6 @@ function createPaintedObject(
   if (options.scale) group.scale.copy(options.scale);
   group.add(base);
 
-  const shells: THREE.ShaderMaterial[] = [];
-  if (outlineRequested) outlinedObjects.push(base);
 
   const paintedObject: PaintedObject = {
     group,
@@ -1061,15 +579,7 @@ function createPaintedObject(
     material,
     nativeMaterial,
     depthMaterial,
-    outlineEnabled: outlineRequested,
-    screenOutlineEnabled: outlineRequested,
-    shells,
     paletteIndex,
-    outlinePalette: {
-      primary: new THREE.Color(palette.outline),
-      secondary: new THREE.Color(palette.outlineSecondary),
-    },
-    outlinePaletteWeight: geometrySurfaceArea(geometry, options.scale),
     label: options.label,
     spin: options.spin ?? new THREE.Vector3(),
     initialPosition: group.position.clone(),
@@ -1080,43 +590,9 @@ function createPaintedObject(
   paintedObjects.push(paintedObject);
   if (paintedObject.spin.lengthSq() > 0) animatedObjects.push(paintedObject);
   parent.add(group);
+  // Lettering remains legible; all other painted surfaces get genuine deposits.
+  if (!options.surfaceMap) sceneBrushwork.addSurface(base, material, 0.16, 73021 + paintedObjects.length * 3571);
   return paintedObject;
-}
-
-function geometrySurfaceArea(
-  geometry: THREE.BufferGeometry,
-  scale = new THREE.Vector3(1, 1, 1),
-): number {
-  const position = geometry.getAttribute('position');
-  if (!position) return 1;
-
-  const index = geometry.getIndex();
-  const elementCount = index?.count ?? position.count;
-  const start = THREE.MathUtils.clamp(Math.floor(geometry.drawRange.start), 0, elementCount);
-  const requestedCount = geometry.drawRange.count;
-  const end = Number.isFinite(requestedCount)
-    ? Math.min(start + Math.max(Math.floor(requestedCount), 0), elementCount)
-    : elementCount;
-  const a = new THREE.Vector3();
-  const b = new THREE.Vector3();
-  const c = new THREE.Vector3();
-  const edgeA = new THREE.Vector3();
-  const edgeB = new THREE.Vector3();
-  let area = 0;
-
-  for (let offset = start; offset + 2 < end; offset += 3) {
-    const aIndex = index?.getX(offset) ?? offset;
-    const bIndex = index?.getX(offset + 1) ?? offset + 1;
-    const cIndex = index?.getX(offset + 2) ?? offset + 2;
-    a.fromBufferAttribute(position, aIndex).multiply(scale);
-    b.fromBufferAttribute(position, bIndex).multiply(scale);
-    c.fromBufferAttribute(position, cIndex).multiply(scale);
-    edgeA.subVectors(b, a);
-    edgeB.subVectors(c, a);
-    area += edgeA.cross(edgeB).length() * 0.5;
-  }
-
-  return Math.max(area, 0.001);
 }
 
 function createNativeMaterial(
@@ -1157,8 +633,6 @@ function createPaintedMesh(
 
   const originalBase = painted.base;
   const skinnedBase = createSkinnedSurfaceMesh(source, originalBase);
-  const outlinedIndex = outlinedObjects.indexOf(originalBase);
-  if (outlinedIndex >= 0) outlinedObjects[outlinedIndex] = skinnedBase;
   originalBase.removeFromParent();
   painted.group.add(skinnedBase);
   painted.base = skinnedBase;
@@ -1196,7 +670,6 @@ function activateScene(id: SceneId, immediate = false): void {
   if (!nextScene) throw new Error(`Unknown paint scene: ${id}`);
 
   const activationId = ++sceneActivationId;
-  outlineColorsManuallyOverridden = false;
   disposeSceneContent();
   currentScene = nextScene;
   const sceneUrl = new URL(window.location.href);
@@ -1226,7 +699,7 @@ function activateScene(id: SceneId, immediate = false): void {
     if (buildResult instanceof Promise) {
       void buildResult
         .then(() => {
-          if (buildContext.isActive()) applySceneOutlineDefaults();
+          if (buildContext.isActive()) syncSceneBrushwork();
         })
         .catch((error) => {
           if (buildContext.isActive()) console.error(`[Paint/Lab] Could not build ${nextScene.label}.`, error);
@@ -1238,7 +711,7 @@ function activateScene(id: SceneId, immediate = false): void {
 
   controls.minDistance = nextScene.orbitDistance.min;
   controls.maxDistance = nextScene.orbitDistance.max;
-  applyReferenceLook(true);
+  applyReferenceLook();
 
   const design = nextScene.cameraBookmarks.design;
   if (immediate) {
@@ -1260,6 +733,7 @@ function activateScene(id: SceneId, immediate = false): void {
 
 function disposeSceneContent(): void {
   clearSelection();
+  sceneBrushwork.clearSurfaces();
   const geometries = new Set<THREE.BufferGeometry>();
   const materials = new Set<THREE.Material>();
 
@@ -1267,7 +741,6 @@ function disposeSceneContent(): void {
     materials.add(painted.material);
     materials.add(painted.nativeMaterial);
     materials.add(painted.depthMaterial);
-    for (const shell of painted.shells) materials.add(shell);
   }
 
   sceneContentRoot.traverse((object) => {
@@ -1284,9 +757,6 @@ function disposeSceneContent(): void {
   for (const geometry of geometries) geometry.dispose();
   paintedObjects.length = 0;
   animatedObjects.length = 0;
-  outlinedObjects.length = 0;
-  outlineObjectSerial = 0;
-  outlineGroupIds.clear();
   sceneFrameUpdaters.length = 0;
   hoveredMesh = null;
 }
@@ -1335,7 +805,8 @@ function createSky(uniforms: typeof skyUniforms): THREE.Mesh {
   return mesh;
 }
 
-function applyReferenceLook(resetOutlineColors = false): void {
+function applyReferenceLook(): void {
+  renderer.shadowMap.needsUpdate = true;
   const preset = PRESETS[currentScene.preferredPreset ?? REFERENCE_LOOK_ID];
   skyUniforms.top.value.set(preset.top);
   skyUniforms.horizon.value.set(preset.horizon);
@@ -1380,161 +851,26 @@ function applyReferenceLook(resetOutlineColors = false): void {
     (materialPalette.reflectionDark.value as THREE.Color).set(palette.reflectionDark);
     (materialPalette.reflectionLight.value as THREE.Color).set(palette.reflectionLight);
     (materialPalette.rim.value as THREE.Color).set(palette.rim);
-    painted.outlinePalette.primary.set(palette.outline);
-    painted.outlinePalette.secondary.set(palette.outlineSecondary);
-    painted.shells.forEach((shell) => {
-      const shellColor = shell.uniforms.uShellColor?.value as THREE.Color | undefined;
-      const layer = shell.userData.paintShellLayer as number | undefined;
-      // The two loop colors are shared live controls. Only the per-object rim
-      // continues to follow its material palette.
-      if (layer === 0) shellColor?.set(palette.rim);
-    });
+
   }
 
-  if (resetOutlineColors) applySceneOutlineDefaults(true);
 
   requiredElement<HTMLElement>('#preset-eyebrow').textContent = currentScene.eyebrow;
   requiredElement<HTMLElement>('#preset-name').textContent = currentScene.title;
   requiredElement<HTMLElement>('#scene-story').textContent = currentScene.description;
-  syncOutlinePasses();
+  syncSceneBrushwork();
 }
 
-function applySceneOutlineDefaults(force = false): void {
-  if (outlineColorsManuallyOverridden && !force) return;
-
-  const outlined = paintedObjects.filter((painted) => painted.outlineEnabled);
-  const heroes = outlined.filter((painted) => painted.group.userData.primary === true);
-  const candidates = heroes.length > 0
-    ? heroes
-    : outlined.length > 0
-      ? outlined
-      : paintedObjects;
-  const fallback = PRESETS[currentPreset].palettes[0];
-  if (candidates.length === 0) {
-    if (fallback) setOutlineColors(fallback.outline, fallback.outlineSecondary);
-    outlineColorsManuallyOverridden = false;
-    return;
-  }
-
-  const primary = new THREE.Color(0, 0, 0);
-  const secondary = new THREE.Color(0, 0, 0);
-  let totalWeight = 0;
-  for (const painted of candidates) {
-    const weight = painted.outlinePaletteWeight;
-    primary.r += painted.outlinePalette.primary.r * weight;
-    primary.g += painted.outlinePalette.primary.g * weight;
-    primary.b += painted.outlinePalette.primary.b * weight;
-    secondary.r += painted.outlinePalette.secondary.r * weight;
-    secondary.g += painted.outlinePalette.secondary.g * weight;
-    secondary.b += painted.outlinePalette.secondary.b * weight;
-    totalWeight += weight;
-  }
-  primary.multiplyScalar(1 / Math.max(totalWeight, 0.001));
-  secondary.multiplyScalar(1 / Math.max(totalWeight, 0.001));
-  setOutlineColors(primary, secondary);
-  outlineColorsManuallyOverridden = false;
+function syncSceneBrushwork(): void {
+  sceneBrushwork.sync(shaderEnabled && sceneBrushEnabled && currentDebugMode === 0
+    && Number(paintGlobals.painterliness.value) > 0 && sceneBrushwork.settings.amount > 0, keyLight.intensity);
 }
 
-function setOutlineColors(
-  primary: THREE.ColorRepresentation,
-  secondary: THREE.ColorRepresentation,
-): void {
-  (paintGlobals.outlinePrimaryColor.value as THREE.Color).set(primary);
-  (paintGlobals.outlineSecondaryColor.value as THREE.Color).set(secondary);
-
-  const primaryInput = document.querySelector<HTMLInputElement>('#outline-primary-color');
-  const secondaryInput = document.querySelector<HTMLInputElement>('#outline-secondary-color');
-  if (primaryInput) {
-    primaryInput.value = `#${(paintGlobals.outlinePrimaryColor.value as THREE.Color).getHexString()}`;
-  }
-  if (secondaryInput) {
-    secondaryInput.value = `#${(paintGlobals.outlineSecondaryColor.value as THREE.Color).getHexString()}`;
-  }
-  syncOutlinePasses();
-}
-
-function syncOutlinePasses(): void {
-  // Keep outline width proportional to the model's apparent size. The design
-  // bookmark is the authored 1x view; moving closer expands the strokes and
-  // moving farther away contracts them by the same perspective ratio.
-  const design = currentScene.cameraBookmarks.design;
-  const referenceDistance = Math.max(
-    design.position.distanceTo(design.target),
-    0.001,
-  );
-  const currentDistance = Math.max(camera.position.distanceTo(controls.target), 0.001);
-  const zoomScale = THREE.MathUtils.clamp(referenceDistance / currentDistance, 0.5, 4);
-  paintGlobals.outlineZoomScale.value = zoomScale;
-
-  const outlineDomainVisible = shaderEnabled
-    && outlinedObjects.length > 0
-    && (currentDebugMode === 0 || currentDebugMode === 8);
-  const width = paintGlobals.outlineWidth.value as number;
-  const rimWidth = paintGlobals.outerRimWidth.value as number;
-  const loopsVisible = outlineDomainVisible && width > 0.00001;
-  const rimVisible = outlineDomainVisible && rimWidth > 0.00001;
-  outlinePrimaryPass.enabled = loopsVisible;
-  outlineSecondaryPass.enabled = loopsVisible;
-  outlineRimPass.enabled = rimVisible;
-  if (!loopsVisible && !rimVisible) return;
-
-  // The three original visual roles use bounded mask dilation on complex
-  // meshes: attached rim, primary loop, and offset secondary loop.
-  const separation = paintGlobals.outlineSeparation.value as number;
-  const variation = paintGlobals.outlineWidthVariation.value as number;
-  const breakup = paintGlobals.outlineBreakup.value as number;
-  const strokeWidth = paintGlobals.outlineStrokeWidth.value as number;
-  const jitter = paintGlobals.outlineJitter.value as number;
-  const upperRangeExpansion = Math.pow(THREE.MathUtils.clamp(width / 0.24, 0, 1), 2) * 5;
-  const primaryBaseRadius = 0.55 + width * 34 + upperRangeExpansion;
-  const primaryRadius = THREE.MathUtils.clamp(
-    primaryBaseRadius * zoomScale,
-    0.65,
-    COMPLEX_OUTLINE_MAX_RADIUS,
-  );
-  const rimRadius = THREE.MathUtils.clamp(
-    (0.4 + rimWidth * 42) * zoomScale,
-    0.5,
-    COMPLEX_OUTLINE_MAX_RADIUS,
-  );
-  const secondaryRadius = THREE.MathUtils.clamp(
-    primaryBaseRadius * separation * (1 + variation * 0.08) * zoomScale,
-    Math.min(primaryRadius + 0.35 * zoomScale, COMPLEX_OUTLINE_MAX_RADIUS),
-    COMPLEX_OUTLINE_MAX_RADIUS,
-  );
-  const brokenCoverage = THREE.MathUtils.clamp(
-    1 - breakup * 0.32 - (jitter / 0.08) * 0.08,
-    0.52,
-    1,
-  );
-
-  outlineRimPass.edgeThickness = rimRadius;
-  outlinePrimaryPass.edgeThickness = primaryRadius;
-  outlineSecondaryPass.edgeThickness = secondaryRadius;
-  outlineRimPass.overlayMaterial.uniforms.uOutlineRadius.value = rimRadius;
-  outlinePrimaryPass.overlayMaterial.uniforms.uOutlineRadius.value = primaryRadius;
-  outlineSecondaryPass.overlayMaterial.uniforms.uOutlineRadius.value = secondaryRadius;
-  outlineRimPass.edgeStrength = 3.4;
-  outlinePrimaryPass.edgeStrength = (2.6 + strokeWidth * 0.72) * brokenCoverage;
-  outlineSecondaryPass.edgeStrength = (1.35 + strokeWidth * 0.48) * brokenCoverage;
-
-  if (currentDebugMode === 8) {
-    outlineRimPass.visibleEdgeColor.set('#ff143f');
-    outlinePrimaryPass.visibleEdgeColor.set('#0deaff');
-    outlineSecondaryPass.visibleEdgeColor.set('#ffe817');
-  } else {
-    const palette = PRESETS[currentPreset].palettes[0];
-    if (palette) outlineRimPass.visibleEdgeColor.set(palette.rim);
-    outlinePrimaryPass.visibleEdgeColor.copy(
-      paintGlobals.outlinePrimaryColor.value as THREE.Color,
-    );
-    outlineSecondaryPass.visibleEdgeColor.copy(
-      paintGlobals.outlineSecondaryColor.value as THREE.Color,
-    );
-  }
-  outlineRimPass.hiddenEdgeColor.set(0x000000);
-  outlinePrimaryPass.hiddenEdgeColor.set(0x000000);
-  outlineSecondaryPass.hiddenEdgeColor.set(0x000000);
+function updateSceneBrushControls(): void {
+  document.querySelectorAll<HTMLInputElement>('input[data-finish]').forEach(input => {
+    input.value = String(sceneBrushwork.settings[input.dataset.finish as keyof SceneBrushSettings]);
+    updateRangeOutput(input);
+  });
 }
 
 function bindInterface(): void {
@@ -1555,6 +891,7 @@ function bindInterface(): void {
       const values = styles[button.dataset.style!];
       if (!values) return;
       for (const [key, value] of Object.entries(values)) paintGlobals[key as keyof PaintGlobalUniforms].value = value;
+      renderer.shadowMap.needsUpdate = true;
       document.querySelectorAll<HTMLInputElement>('input[data-uniform]').forEach(input => {
         input.value = String(paintGlobals[input.dataset.uniform as keyof PaintGlobalUniforms].value);
         updateRangeOutput(input);
@@ -1573,6 +910,7 @@ function bindInterface(): void {
     updateRangeOutput(input);
     input.addEventListener('input', () => {
       uniform.value = Number(input.value);
+      renderer.shadowMap.needsUpdate = true;
       updateRangeOutput(input);
       document.querySelectorAll<HTMLButtonElement>('[data-style]').forEach(b => {
         b.classList.remove('is-active'); b.setAttribute('aria-pressed', 'false');
@@ -1580,15 +918,18 @@ function bindInterface(): void {
     });
   });
 
-  document.querySelectorAll<HTMLInputElement>('input[type="color"][data-color-uniform]').forEach((input) => {
-    const uniformName = input.dataset.colorUniform as 'outlinePrimaryColor' | 'outlineSecondaryColor';
-    const color = paintGlobals[uniformName].value as THREE.Color;
-    input.value = `#${color.getHexString()}`;
+  document.querySelectorAll<HTMLInputElement>('input[data-finish]').forEach(input => {
     input.addEventListener('input', () => {
-      color.set(input.value);
-      outlineColorsManuallyOverridden = true;
-      syncOutlinePasses();
+      sceneBrushwork.settings[input.dataset.finish as keyof SceneBrushSettings] = Number(input.value);
+      updateRangeOutput(input);
     });
+  });
+  updateSceneBrushControls();
+  requiredElement<HTMLInputElement>('#scene-brush-enabled').addEventListener('change', event => {
+    sceneBrushEnabled = (event.target as HTMLInputElement).checked;
+  });
+  requiredElement<HTMLSelectElement>('#scene-brush-view').addEventListener('change', event => {
+    sceneBrushwork.uniforms.debug.value = Number((event.target as HTMLSelectElement).value);
   });
 
   document.querySelectorAll<HTMLButtonElement>('[data-camera]').forEach((button) => {
@@ -1611,13 +952,13 @@ function bindInterface(): void {
   });
 
   const debugSelect = requiredElement<HTMLSelectElement>('#debug-mode');
-  debugSelect.innerHTML = PAINT_DEBUG_MODES.map((mode) => `<option value="${mode}">${mode}</option>`).join('');
+  debugSelect.innerHTML = PAINT_DEBUG_MODES.filter(mode => !['Rim erosion', 'Edge layers', 'Texture weights'].includes(mode)).map((mode) => `<option value="${mode}">${mode}</option>`).join('');
   debugSelect.addEventListener('change', () => {
     currentDebugMode = debugModeIndex(debugSelect.value as (typeof PAINT_DEBUG_MODES)[number]);
     paintGlobals.debugMode.value = currentDebugMode;
     applyTexturePreview(activeTexture.metadata, currentDebugMode);
     requiredElement<HTMLElement>('#view-status').textContent = debugSelect.value;
-    syncOutlinePasses();
+    syncSceneBrushwork();
   });
 
   requiredElement<HTMLInputElement>('#auto-rotate').addEventListener('change', (event) => {
@@ -1630,7 +971,6 @@ function bindInterface(): void {
   requiredElement<HTMLSelectElement>('#quality').addEventListener('change', (event) => {
     const quality = (event.target as HTMLSelectElement).value as 'balanced' | 'high' | 'ultra';
     renderer.setPixelRatio(pixelRatioForQuality(quality));
-    composer.setPixelRatio(renderer.getPixelRatio());
     onResize();
   });
 
@@ -1660,15 +1000,19 @@ function bindInterface(): void {
   renderer.domElement.addEventListener('dblclick', focusHoveredObject);
   controls.addEventListener('start', () => {
     cameraGoal = null;
+    orbiting = true;
   });
+  controls.addEventListener('end', () => { orbiting = false; hoverDirty = true; });
+  controls.addEventListener('change', () => { hoverDirty = true; });
   window.addEventListener('resize', onResize);
   document.addEventListener('keydown', onKeyDown);
 }
 
 function setShaderEnabled(enabled: boolean): void {
+  renderer.shadowMap.needsUpdate = true;
   shaderEnabled = enabled;
   for (const painted of paintedObjects) applyShaderModeToObject(painted);
-  syncOutlinePasses();
+  syncSceneBrushwork();
 
   const button = requiredElement<HTMLButtonElement>('#shader-toggle');
   button.classList.toggle('is-active', enabled);
@@ -1683,21 +1027,12 @@ function setShaderEnabled(enabled: boolean): void {
 function applyShaderModeToObject(painted: PaintedObject): void {
   painted.base.material = shaderEnabled ? painted.material : painted.nativeMaterial;
   painted.base.customDepthMaterial = shaderEnabled ? painted.depthMaterial : undefined;
-  painted.group.children.forEach((child) => {
-    if (child.userData.paintShell === true) {
-      child.visible = shaderEnabled && painted.outlineEnabled;
-    }
-  });
 
-  const outlineIndex = outlinedObjects.indexOf(painted.base);
-  if (shaderEnabled && painted.screenOutlineEnabled && outlineIndex < 0) {
-    outlinedObjects.push(painted.base);
-  } else if ((!shaderEnabled || !painted.screenOutlineEnabled) && outlineIndex >= 0) {
-    outlinedObjects.splice(outlineIndex, 1);
-  }
 }
 
 function replacePaintTexture(seed: number): void {
+  renderer.shadowMap.needsUpdate = true;
+  sceneBrushwork.uniforms.seedPhase.value = (seed % 10007) / 10007;
   const previousPigment = pigmentTexture;
   pigmentTexture = createPigmentTexture(seed);
   pigmentTexture.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
@@ -1707,9 +1042,6 @@ function replacePaintTexture(seed: number): void {
   activeTexture = createPaintTexture({ size: 512, seed });
   activeTexture.texture.anisotropy = Math.min(12, renderer.capabilities.getMaxAnisotropy());
   paintGlobals.paintMap.value = activeTexture.texture;
-  outlineRimPass.patternTexture = activeTexture.texture;
-  outlinePrimaryPass.patternTexture = activeTexture.texture;
-  outlineSecondaryPass.patternTexture = activeTexture.texture;
   for (const painted of paintedObjects) {
     painted.material.map = activeTexture.texture;
     painted.material.needsUpdate = true;
@@ -1738,11 +1070,20 @@ function resetShaderControls(): void {
   elapsedTime = 0;
   paused = true;
   requiredElement<HTMLInputElement>('#pause-motion').checked = true;
-  applyReferenceLook(true);
+  applyReferenceLook();
   setCameraBookmark('design');
 }
 
 function applySceneControlDefaults(sceneDefinition: PaintSceneDefinition): void {
+  Object.assign(sceneBrushwork.settings, SCENE_BRUSH_DEFAULTS);
+  sceneBrushEnabled = true;
+  sceneBrushwork.uniforms.debug.value = 0;
+  sceneBrushwork.uniforms.seedPhase.value = (73021 % 10007) / 10007;
+  const finishToggle = document.querySelector<HTMLInputElement>('#scene-brush-enabled');
+  if (finishToggle) finishToggle.checked = true;
+  const finishView = document.querySelector<HTMLSelectElement>('#scene-brush-view');
+  if (finishView) finishView.value = '0';
+  updateSceneBrushControls();
   document.querySelectorAll<HTMLButtonElement>('[data-style]').forEach(button => {
     const selected = button.dataset.style === 'impasto';
     button.classList.toggle('is-active', selected);
@@ -1799,6 +1140,7 @@ function updateCameraGoal(delta: number): void {
 }
 
 function onPointerMove(event: PointerEvent): void {
+  hoverDirty = true;
   const bounds = renderer.domElement.getBoundingClientRect();
   pointer.x = ((event.clientX - bounds.left) / bounds.width) * 2 - 1;
   pointer.y = -((event.clientY - bounds.top) / bounds.height) * 2 + 1;
@@ -1835,6 +1177,14 @@ function onPointerUp(event: PointerEvent): void {
 }
 
 function updateHover(): void {
+  if (!hoverDirty || orbiting || cameraGoal || transformControls.dragging) return;
+  if (Math.abs(pointer.x) > 1 || Math.abs(pointer.y) > 1) {
+    hoverDirty = false; setHover(null); return;
+  }
+  const now = performance.now();
+  if (now - lastHoverCheck < 100) return;
+  lastHoverCheck = now;
+  hoverDirty = false;
   raycaster.setFromCamera(pointer, camera);
   const intersections = raycaster.intersectObjects(paintedObjects.map((object) => object.base), false);
   setHover(intersections[0]?.object ?? null);
@@ -1945,7 +1295,8 @@ function exportSettings(): void {
   const preset = PRESETS[lookId];
   const payload: PaintLabSettingsExport = {
     format: 'paint-lab-settings',
-    version: 3,
+    version: 4,
+    sceneBrushwork: { ...sceneBrushwork.settings, enabled: sceneBrushEnabled },
     exportedAt: new Date().toISOString(),
     threeRevision: THREE.REVISION,
     scene: {
@@ -1963,10 +1314,7 @@ function exportSettings(): void {
       channels: ['pigment value', 'pigment temperature', 'bristle relief', 'paint load'],
     },
     controls: readPainterlyControls(paintGlobals),
-    outlineColors: {
-      primary: `#${(paintGlobals.outlinePrimaryColor.value as THREE.Color).getHexString()}`,
-      secondary: `#${(paintGlobals.outlineSecondaryColor.value as THREE.Color).getHexString()}`,
-    },
+
   };
   const blob = new Blob([`${JSON.stringify(payload, null, 2)}\n`], {
     type: 'application/json',
@@ -2031,6 +1379,7 @@ function animate(frameTime: number): void {
   if (!paused) elapsedTime += delta;
   if (!paused) {
     for (const update of sceneFrameUpdaters) update(delta);
+    if (sceneFrameUpdaters.length || (autoRotate && animatedObjects.length)) renderer.shadowMap.needsUpdate = true;
   }
   if (!paused && autoRotate) {
     for (const object of animatedObjects) {
@@ -2044,7 +1393,7 @@ function animate(frameTime: number): void {
   updateCameraGoal(delta);
   controls.update(delta);
   updateHover();
-  renderFrame(delta);
+  renderFrame();
 
   frameCounter += 1;
   statsElapsed += delta;
@@ -2059,13 +1408,11 @@ function animate(frameTime: number): void {
   requestAnimationFrame(animate);
 }
 
-function renderFrame(delta?: number): void {
-  syncOutlinePasses();
-  if (outlineRimPass.enabled || outlinePrimaryPass.enabled || outlineSecondaryPass.enabled) {
-    composer.render(delta);
-  } else {
-    renderer.render(scene, camera);
-  }
+function renderFrame(): void {
+  syncSceneBrushwork();
+  renderer.info.autoReset = false;
+  renderer.info.reset();
+  renderer.render(scene, camera);
 }
 
 function updateStats(): void {
@@ -2090,7 +1437,6 @@ function onResize(): void {
   ));
   camera.updateProjectionMatrix();
   renderer.setSize(width, height, false);
-  composer.setSize(width, height);
 }
 
 function pixelRatioForQuality(quality: 'balanced' | 'high' | 'ultra'): number {
@@ -2198,6 +1544,19 @@ function createInterfaceMarkup(): string {
             ${rangeMarkup('Pigment variation', 'pigment-variation', 'pigmentVariation', 0, 1.5, 0.01)}
             ${rangeMarkup('Impasto relief', 'impasto-strength', 'impastoStrength', 0, 1.5, 0.01)}
           </section>
+          <details open class="scene-brush-section">
+            <summary><span>Paint beyond the edges</span><small>04</small></summary>
+            <p class="finish-note">Loaded strokes follow the surfaces, catch their light, and leave bristle tips at the silhouette.</p>
+            <div class="toggle-row"><label><input id="scene-brush-enabled" type="checkbox" checked /><span></span> Whole-scene brushwork</label></div>
+            ${finishRangeMarkup('Scene brushwork', 'amount', 0, 1, 0.01)}
+            ${finishRangeMarkup('Silhouette splay', 'splay', 0, 2.5, 0.01)}
+            ${finishRangeMarkup('Stroke size', 'size', 0.4, 2.5, 0.01)}
+            ${finishRangeMarkup('Dry edges', 'dry', 0, 1, 0.01)}
+            <label class="select-row" for="scene-brush-view"><span>Brushwork view</span><select id="scene-brush-view">
+              <option value="0">Finished painting</option><option value="1">Brush deposits only</option><option value="2">Stroke coverage</option>
+            </select></label>
+          </details>
+
           <details open>
             <summary><span>Stroke field</span><small>01</small></summary>
             ${rangeMarkup('Brush scale', 'brush-scale', 'brushScale', 0.25, 8, 0.05)}
@@ -2226,26 +1585,6 @@ function createInterfaceMarkup(): string {
             ${rangeMarkup('Roughness breakup', 'roughness-variation', 'roughnessVariation', 0, 0.75, 0.01)}
             ${rangeMarkup('Painted rim', 'rim-strength', 'rimStrength', 0, 2, 0.02)}
             ${rangeMarkup('Rim falloff', 'rim-power', 'rimPower', 0.7, 5, 0.05)}
-          </details>
-
-          <details open>
-            <summary><span>Edges &amp; outlines</span><small>05</small></summary>
-            ${rangeMarkup('Rim erosion', 'edge-erosion', 'edgeErosion', 0, 1, 0.01)}
-            ${rangeMarkup('Bristle reach', 'edge-bristle-reach', 'edgeBristleReach', 0, 1, 0.01)}
-            ${rangeMarkup('Erosion texture', 'erosion-scale', 'erosionScale', 0, 0.8, 0.01)}
-            ${rangeMarkup('Curvature guard', 'curvature-guard', 'curvatureGuard', 1, 20, 0.25)}
-            ${rangeMarkup('Outer rim width', 'outer-rim-width', 'outerRimWidth', 0, 0.11, 0.002)}
-            ${rangeMarkup('Rim continuity', 'rim-continuity', 'rimContinuity', 0, 1, 0.01)}
-            ${rangeMarkup('Outline width', 'outline-width', 'outlineWidth', 0, 0.24, 0.001)}
-            <div class="outline-color-grid">
-              ${colorMarkup('Primary loop', 'outline-primary-color', 'outlinePrimaryColor')}
-              ${colorMarkup('Secondary loop', 'outline-secondary-color', 'outlineSecondaryColor')}
-            </div>
-            ${rangeMarkup('Width variation', 'outline-width-variation', 'outlineWidthVariation', 0, 1, 0.01)}
-            ${rangeMarkup('Outline jitter', 'outline-jitter', 'outlineJitter', 0, 0.08, 0.002)}
-            ${rangeMarkup('Loop separation', 'outline-separation', 'outlineSeparation', 1.05, 2.4, 0.01)}
-            ${rangeMarkup('Loop breakup', 'outline-breakup', 'outlineBreakup', 0, 1, 0.01)}
-            ${rangeMarkup('Loop stroke', 'outline-stroke-width', 'outlineStrokeWidth', 0.5, 3, 0.05)}
           </details>
 
           <details open>
@@ -2317,29 +1656,16 @@ function rangeMarkup(
   `;
 }
 
-function colorMarkup(
-  label: string,
-  id: string,
-  uniform: 'outlinePrimaryColor' | 'outlineSecondaryColor',
-): string {
-  return `
-    <label class="color-row" for="${id}">
-      <span>${label}</span>
-      <input
-        id="${id}"
-        data-color-uniform="${uniform}"
-        type="color"
-        aria-label="${label} color"
-      />
-    </label>
-  `;
+function finishRangeMarkup(label: string, key: keyof SceneBrushSettings, min: number, max: number, step: number): string {
+  return `<label class="range-row" for="finish-${key}"><span>${label}</span><output for="finish-${key}">—</output>
+    <input id="finish-${key}" data-finish="${key}" type="range" min="${min}" max="${max}" step="${step}" /></label>`;
 }
 
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
     transformControls.detach();
     transformControls.dispose();
-    composer.dispose();
+    sceneBrushwork.dispose();
     renderer.dispose();
     environmentTarget.dispose();
     activeTexture.texture.dispose();

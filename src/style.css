@@ -1110,6 +1110,10 @@ button:focus-visible, select:focus-visible { outline: 2px solid #e7c998; outline
   .runtime-pill { display: none; }
 }
 .medium-section { padding: 20px 24px; }
+.finish-note { margin: 0 24px 17px; font: 12px/1.7 Georgia, serif; color: #b5b8a9; }
+.scene-brush-section { border-top: 1px solid #cbaa6c40; border-bottom: 1px solid #cbaa6c40; }
+.scene-brush-section .toggle-row { padding: 0 24px 17px; }
+.scene-brush-section .select-row { margin: 4px 24px 20px; }
 @media (min-width: 981px) { .panel-footer { padding-right: 18px; padding-left: 18px; } .panel-footer button { padding: 10px 7px; white-space: nowrap; } }
 .palette-toggle { position: absolute; z-index: 6; top: 25px; right: 24px; padding: 10px 14px; border: 1px solid #ffffff30; border-radius: 3px; background: #252823d9; color: #ebddc2; backdrop-filter: blur(12px); font-size: 11px; cursor: pointer; }
 .palette-close { background: transparent; font-size: 25px; color: #b4b6a8; cursor: pointer; padding: 5px; }

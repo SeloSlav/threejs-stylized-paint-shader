@@ -133,7 +133,7 @@ export const PAINT_SCENES: readonly PaintSceneDefinition[] = [
     cameraBookmarks: {
       near: { position: new THREE.Vector3(5, 4.5, 10), target: new THREE.Vector3(-2.2, 2.1, 1) },
       design: { position: new THREE.Vector3(10.5, 7.3, 17), target: new THREE.Vector3(0, 3.1, -0.3) },
-      far: { position: new THREE.Vector3(20, 13, 30), target: new THREE.Vector3(0, 3.5, -2) },
+      far: { position: new THREE.Vector3(17, 10, 25), target: new THREE.Vector3(0, 3.4, -2) },
     }, build: buildNightCafe,
   },
   {
@@ -146,7 +146,7 @@ export const PAINT_SCENES: readonly PaintSceneDefinition[] = [
     cameraBookmarks: {
       near: { position: new THREE.Vector3(6, 5, 8), target: new THREE.Vector3(-0.4, 2.6, 0) },
       design: { position: new THREE.Vector3(7, 5.9, 10), target: new THREE.Vector3(0, 2.6, -0.5) },
-      far: { position: new THREE.Vector3(15, 11, 20), target: new THREE.Vector3(0, 2, -0.5) },
+      far: { position: new THREE.Vector3(11, 8.2, 16), target: new THREE.Vector3(0, 2.6, -1) },
     }, build: buildDuckAdmiral,
   },
   {
@@ -159,7 +159,7 @@ export const PAINT_SCENES: readonly PaintSceneDefinition[] = [
     cameraBookmarks: {
       near: { position: new THREE.Vector3(5.7, 4.1, 8), target: new THREE.Vector3(0, 2.15, 0.3) },
       design: { position: new THREE.Vector3(5.5, 4.5, 10.3), target: new THREE.Vector3(0, 2, 0) },
-      far: { position: new THREE.Vector3(14, 10, 21), target: new THREE.Vector3(0, 1.8, -2) },
+      far: { position: new THREE.Vector3(9.6, 6.5, 16), target: new THREE.Vector3(0, 2, -1) },
     }, build: buildPigeonMeeting,
   },
   {
@@ -172,7 +172,7 @@ export const PAINT_SCENES: readonly PaintSceneDefinition[] = [
     cameraBookmarks: {
       near: { position: new THREE.Vector3(5.5, 4.5, 9), target: new THREE.Vector3(-1, 1.1, 0.5) },
       design: { position: new THREE.Vector3(8, 6.3, 15.5), target: new THREE.Vector3(0, 1.9, -1.4) },
-      far: { position: new THREE.Vector3(18, 13, 28), target: new THREE.Vector3(0, 1.3, -2) },
+      far: { position: new THREE.Vector3(13, 9, 22), target: new THREE.Vector3(0, 1.9, -2) },
     }, build: buildSnailRace,
   },
 ] as const;

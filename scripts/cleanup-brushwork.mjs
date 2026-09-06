@@ -1,0 +1,23 @@
+import fs from 'node:fs';
+let s=fs.readFileSync('src/main.ts','utf8').replaceAll('\r\n','\n');
+const cut=(a,b,replacement='')=>{const start=s.indexOf(a),end=s.indexOf(b,start+a.length);if(start<0||end<0)throw Error(a);s=s.slice(0,start)+replacement+s.slice(end)};
+cut('  outlineEnabled: boolean;', '  label: string;', '  paletteIndex: number | null;\n');
+cut('  outlineColors: {', '}\n\nconst PRESETS');
+s=s.replace('const outlinedObjects: THREE.Object3D[] = [];\n','').replace('let outlineObjectSerial = 0;\n','').replace('const outlineGroupIds = new Map<string, number>();\n','');
+cut('  const outlineRequested =', '  const depthMaterial =');
+s=s.replace('  const shells: THREE.ShaderMaterial[] = [];\n  if (outlineRequested) outlinedObjects.push(base);\n','');
+cut('    outlineEnabled: outlineRequested,', '    label: options.label,','    paletteIndex,\n');
+cut('function geometrySurfaceArea(', 'function createNativeMaterial(');
+s=s.replace('  const outlinedIndex = outlinedObjects.indexOf(originalBase);\n  if (outlinedIndex >= 0) outlinedObjects[outlinedIndex] = skinnedBase;\n','');
+s=s.replace('    for (const shell of painted.shells) materials.add(shell);\n','').replace('  outlinedObjects.length = 0;\n','').replace('  outlineObjectSerial = 0;\n','').replace('  outlineGroupIds.clear();\n','');
+cut('    painted.outlinePalette.primary.set', '\n  }\n\n\n  requiredElement');
+cut('  painted.group.children.forEach((child)', '\n}\n\nfunction replacePaintTexture');
+cut('    outlineColors: {', '\n  };\n  const blob');
+// Put the useful replacement controls where they are easy to discover.
+const a=s.indexOf('          <details open class="scene-brush-section">'),b=s.indexOf('          <details open>',a+15);
+const section=s.slice(a,b); s=s.slice(0,a)+s.slice(b);
+const destination=s.indexOf('          <details open>');
+s=s.slice(0,destination)+section+s.slice(destination);
+s=s.replace("debugSelect.innerHTML = PAINT_DEBUG_MODES.map", "debugSelect.innerHTML = PAINT_DEBUG_MODES.filter(mode => !['Rim erosion', 'Edge layers', 'Texture weights'].includes(mode)).map");
+s=s.replace('<option value="2">Silhouette strokes</option>', '<option value="2">Stroke coverage</option>');
+fs.writeFileSync('src/main.ts',s);
