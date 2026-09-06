@@ -25,6 +25,7 @@ import {
   type PainterlyMaterial,
 } from './PainterlyMaterial.ts';
 import { createPaintTexture, type PaintTextureMetadata } from './paintTexture.ts';
+import { createPigmentTexture } from './pigmentTexture.ts';
 import {
   PAINT_SCENES,
   paintSceneById,
@@ -79,7 +80,7 @@ interface PaintedObject {
 
 interface PaintLabSettingsExport {
   format: 'paint-lab-settings';
-  version: 2;
+  version: 3;
   exportedAt: string;
   threeRevision: string;
   scene: {
@@ -92,6 +93,7 @@ interface PaintLabSettingsExport {
     palettes: PaintPalette[];
   };
   paintTexture: PaintTextureMetadata;
+  pigmentTexture: { seed: number; size: number; channels: string[] };
   controls: PainterlyControlValues;
   outlineColors: {
     primary: string;
@@ -298,15 +300,17 @@ const PRESETS: Record<PresetName, Preset> = {
 // palette, light colour, exposure, and environment change together, which
 // obscured whether a dark patch came from pigment or actual lighting.
 const REFERENCE_LOOK_ID: PresetName = 'noir';
-const REFERENCE_LOOK_LABEL = 'Reference paint';
 
-const initialScene = PAINT_SCENES[0];
+const initialScene = paintSceneById(new URLSearchParams(location.search).get('scene') ?? '') ?? PAINT_SCENES[0];
 if (!initialScene) throw new Error('The paint scene registry is empty.');
 
 const defaultControls = {
+  painterliness: 1,
+  pigmentVariation: 0.85,
+  impastoStrength: 0.85,
   brushScale: 0.7,
   parallaxDepth: 0.048,
-  normalStrength: 0.9,
+  normalStrength: 0.66,
   strokeContrast: 0.9,
   detailStrength: 0.72,
   shadowThreshold: -0.36,
@@ -314,19 +318,19 @@ const defaultControls = {
   bandSoftness: 0.06,
   shadowValue: 0.02,
   midtoneValue: 0.74,
-  oilStrength: 0.48,
+  oilStrength: 0.14,
   oilThreshold: 0.34,
   nativeSheen: 0,
   highlightBrushiness: 1.08,
   highlightSteps: 4,
   roughnessVariation: 0.36,
-  rimStrength: 0.48,
+  rimStrength: 0.12,
   rimPower: 5,
-  edgeErosion: 0.82,
+  edgeErosion: 0.24,
   edgeBristleReach: 0.76,
   erosionScale: 0.66,
   curvatureGuard: 8,
-  shadowErosion: 1,
+  shadowErosion: 0.3,
   shadowMaskOffset: -0.05,
   shadowBrushScale: 0.72,
   outerRimWidth: 0.001,
@@ -358,6 +362,10 @@ const renderer = new THREE.WebGLRenderer({
 });
 renderer.setPixelRatio(pixelRatioForQuality('high'));
 renderer.setSize(viewport.clientWidth, viewport.clientHeight);
+// Buffer size follows ResizeObserver; CSS must keep filling the viewport
+// after opening/closing the palette instead of retaining the initial pixels.
+renderer.domElement.style.width = '100%';
+renderer.domElement.style.height = '100%';
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = PRESETS.noir.exposure;
@@ -373,7 +381,7 @@ const camera = new THREE.PerspectiveCamera(
   48,
   Math.max(viewport.clientWidth, 1) / Math.max(viewport.clientHeight, 1),
   0.1,
-  120,
+  320,
 );
 camera.position.copy(initialScene.cameraBookmarks.design.position);
 
@@ -412,13 +420,17 @@ pmrem.dispose();
 
 let activeTexture = createPaintTexture({ size: 512, seed: 73021 });
 activeTexture.texture.anisotropy = Math.min(12, renderer.capabilities.getMaxAnisotropy());
-const paintGlobals = createPaintGlobalUniforms(activeTexture.texture);
+let pigmentTexture = createPigmentTexture();
+pigmentTexture.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+const paintGlobals = createPaintGlobalUniforms(activeTexture.texture, pigmentTexture);
 (paintGlobals.viewportSize.value as THREE.Vector2).set(
   Math.max(viewport.clientWidth, 1),
   Math.max(viewport.clientHeight, 1),
 );
 
 const skyUniforms = {
+  pigment: paintGlobals.pigmentMap,
+  painterliness: paintGlobals.painterliness,
   top: { value: new THREE.Color(PRESETS.noir.top) },
   horizon: { value: new THREE.Color(PRESETS.noir.horizon) },
   abyss: { value: new THREE.Color(PRESETS.noir.abyss) },
@@ -935,7 +947,7 @@ function configurePainterlyOutlineComposite(
   material.needsUpdate = true;
 }
 
-const currentPreset: PresetName = REFERENCE_LOOK_ID;
+let currentPreset: PresetName = REFERENCE_LOOK_ID;
 let currentScene: PaintSceneDefinition = initialScene;
 let shaderEnabled = true;
 let autoRotate = true;
@@ -961,6 +973,7 @@ let sceneActivationId = 0;
 activateScene(initialScene.id, true);
 applyTexturePreview(activeTexture.metadata, currentDebugMode);
 bindInterface();
+new ResizeObserver(onResize).observe(viewport);
 onResize();
 
 requestAnimationFrame(() => {
@@ -998,6 +1011,7 @@ function createPaintedObject(
     objectTextureScale: options.objectTextureScale,
     lightPaintScale: options.lightPaintScale,
     macroVariation: options.macroVariation,
+    pigmentContrast: options.pigmentContrast,
     roughness: options.roughness,
     metalness: options.metalness,
     clearcoat: options.clearcoat,
@@ -1235,6 +1249,7 @@ function activateScene(id: SceneId, immediate = false): void {
   outlineColorsManuallyOverridden = false;
   disposeSceneContent();
   currentScene = nextScene;
+  currentPreset = nextScene.preferredPreset ?? REFERENCE_LOOK_ID;
   applySceneControlDefaults(nextScene);
   const buildContext = {
     root: sceneContentRoot,
@@ -1342,27 +1357,35 @@ function createSky(uniforms: typeof skyUniforms): THREE.Mesh {
       uniform vec3 top;
       uniform vec3 horizon;
       uniform vec3 abyss;
+      uniform sampler2D pigment;
+      uniform float painterliness;
       varying vec3 vSkyDirection;
       void main() {
         float vertical = normalize( vSkyDirection ).y;
-        float upper = smoothstep( -0.01, 0.72, vertical );
+        float upper = smoothstep( -0.08, 0.36, vertical );
         float lower = smoothstep( -0.28, 0.02, vertical );
         vec3 color = mix( abyss, horizon, lower );
         color = mix( color, top, upper );
+        vec3 direction = normalize( vSkyDirection );
+        vec2 skyUv = vec2( atan( direction.z, direction.x ) / 6.28318, asin( direction.y ) / 3.14159 );
+        vec4 stroke = texture2D( pigment, skyUv * vec2( 3.0, 1.7 ) );
+        color *= 1.0 + ( stroke.r - 0.5 ) * 0.22 * painterliness;
+        color += color * 0.035 * stroke.a * painterliness;
         gl_FragColor = vec4( color, 1.0 );
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
       }
     `,
   });
-  const mesh = new THREE.Mesh(new THREE.SphereGeometry(70, 48, 24), material);
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(270, 48, 24), material);
+  mesh.onBeforeRender = () => { mesh.position.copy(camera.position); mesh.updateMatrixWorld(); };
   mesh.frustumCulled = false;
   mesh.renderOrder = -100;
   return mesh;
 }
 
 function applyReferenceLook(resetOutlineColors = false): void {
-  const preset = PRESETS[REFERENCE_LOOK_ID];
+  const preset = PRESETS[currentScene.preferredPreset ?? REFERENCE_LOOK_ID];
   skyUniforms.top.value.set(preset.top);
   skyUniforms.horizon.value.set(preset.horizon);
   skyUniforms.abyss.value.set(preset.abyss);
@@ -1374,6 +1397,14 @@ function applyReferenceLook(resetOutlineColors = false): void {
   accentLight.color.set(preset.accent);
   accentLight.intensity = preset.accentIntensity;
   renderer.toneMappingExposure = preset.exposure;
+  if (currentScene.id === 'provence') {
+    skyUniforms.top.value.set('#4d91b1');
+    skyUniforms.horizon.value.set('#f1dab7');
+    skyUniforms.abyss.value.set('#a5ad77');
+  }
+  if (scene.fog instanceof THREE.FogExp2) {
+    scene.fog.density = currentScene.id === 'provence' ? 0.005 : 0.009;
+  }
 
   for (const painted of paintedObjects) {
     if (painted.paletteIndex === null) continue;
@@ -1398,8 +1429,8 @@ function applyReferenceLook(resetOutlineColors = false): void {
 
   if (resetOutlineColors) applySceneOutlineDefaults(true);
 
-  requiredElement<HTMLElement>('#preset-eyebrow').textContent = 'TRUE SHADOW / WHITE PAINT';
-  requiredElement<HTMLElement>('#preset-name').textContent = REFERENCE_LOOK_LABEL;
+  requiredElement<HTMLElement>('#preset-eyebrow').textContent = 'OIL ON A DIGITAL CANVAS';
+  requiredElement<HTMLElement>('#preset-name').textContent = currentScene.title;
   syncOutlinePasses();
 }
 
@@ -1542,6 +1573,33 @@ function syncOutlinePasses(): void {
 }
 
 function bindInterface(): void {
+  document.querySelectorAll<HTMLButtonElement>('[data-toggle-panel]').forEach(button => {
+    button.addEventListener('click', () => {
+      const shell = requiredElement<HTMLElement>('.app-shell');
+      const hidden = shell.classList.toggle('is-panel-hidden');
+      requiredElement<HTMLButtonElement>('#panel-toggle').setAttribute('aria-expanded', String(!hidden));
+    });
+  });
+  document.querySelectorAll<HTMLButtonElement>('[data-style]').forEach(button => {
+    button.addEventListener('click', () => {
+      const styles: Record<string, Partial<PainterlyControlValues>> = {
+        impasto: { painterliness: 1, pigmentVariation: 0.85, impastoStrength: 0.85, brushScale: 0.85, bandSoftness: 0.055, oilStrength: 0.08, rimStrength: 0.08 },
+        gouache: { painterliness: 1, pigmentVariation: 0.7, impastoStrength: 0.15, brushScale: 0.7, bandSoftness: 0.018, oilStrength: 0, rimStrength: 0.02 },
+        study: { painterliness: 1, pigmentVariation: 0.48, impastoStrength: 0.42, brushScale: 1.7, bandSoftness: 0.17, oilStrength: 0, rimStrength: 0.035 },
+      };
+      const values = styles[button.dataset.style!];
+      if (!values) return;
+      for (const [key, value] of Object.entries(values)) paintGlobals[key as keyof PaintGlobalUniforms].value = value;
+      document.querySelectorAll<HTMLInputElement>('input[data-uniform]').forEach(input => {
+        input.value = String(paintGlobals[input.dataset.uniform as keyof PaintGlobalUniforms].value);
+        updateRangeOutput(input);
+      });
+      document.querySelectorAll<HTMLButtonElement>('[data-style]').forEach(b => {
+        b.classList.toggle('is-active', b === button); b.setAttribute('aria-pressed', String(b === button));
+      });
+    });
+  });
+
   document.querySelectorAll<HTMLInputElement>('input[type="range"][data-uniform]').forEach((input) => {
     const uniformName = input.dataset.uniform as keyof PaintGlobalUniforms;
     const uniform = paintGlobals[uniformName];
@@ -1551,6 +1609,9 @@ function bindInterface(): void {
     input.addEventListener('input', () => {
       uniform.value = Number(input.value);
       updateRangeOutput(input);
+      document.querySelectorAll<HTMLButtonElement>('[data-style]').forEach(b => {
+        b.classList.remove('is-active'); b.setAttribute('aria-pressed', 'false');
+      });
     });
   });
 
@@ -1665,6 +1726,11 @@ function applyShaderModeToObject(painted: PaintedObject): void {
 }
 
 function replacePaintTexture(seed: number): void {
+  const previousPigment = pigmentTexture;
+  pigmentTexture = createPigmentTexture(seed);
+  pigmentTexture.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+  paintGlobals.pigmentMap.value = pigmentTexture;
+  previousPigment.dispose();
   const previous = activeTexture.texture;
   activeTexture = createPaintTexture({ size: 512, seed });
   activeTexture.texture.anisotropy = Math.min(12, renderer.capabilities.getMaxAnisotropy());
@@ -1705,6 +1771,11 @@ function resetShaderControls(): void {
 }
 
 function applySceneControlDefaults(sceneDefinition: PaintSceneDefinition): void {
+  document.querySelectorAll<HTMLButtonElement>('[data-style]').forEach(button => {
+    const selected = button.dataset.style === 'impasto';
+    button.classList.toggle('is-active', selected);
+    button.setAttribute('aria-pressed', String(selected));
+  });
   const values: Partial<Record<keyof PaintGlobalUniforms, number>> = {
     ...defaultControls,
     ...sceneDefinition.controlOverrides,
@@ -1899,10 +1970,11 @@ function captureFrame(): void {
 }
 
 function exportSettings(): void {
-  const preset = PRESETS[currentPreset];
+  const lookId = currentScene.preferredPreset ?? currentPreset;
+  const preset = PRESETS[lookId];
   const payload: PaintLabSettingsExport = {
     format: 'paint-lab-settings',
-    version: 2,
+    version: 3,
     exportedAt: new Date().toISOString(),
     threeRevision: THREE.REVISION,
     scene: {
@@ -1910,11 +1982,15 @@ function exportSettings(): void {
       label: currentScene.label,
     },
     look: {
-      id: currentPreset,
-      label: REFERENCE_LOOK_LABEL,
+      id: lookId,
+      label: preset.label,
       palettes: preset.palettes,
     },
     paintTexture: activeTexture.metadata,
+    pigmentTexture: {
+      seed: Number(activeTexture.metadata.seed), size: 512,
+      channels: ['pigment value', 'pigment temperature', 'bristle relief', 'paint load'],
+    },
     controls: readPainterlyControls(paintGlobals),
     outlineColors: {
       primary: `#${(paintGlobals.outlinePrimaryColor.value as THREE.Color).getHexString()}`,
@@ -1939,7 +2015,7 @@ function exportSettings(): void {
 }
 
 function applyTexturePreview(metadata: PaintTextureMetadata, debugMode: number): void {
-  const textureData = activeTexture.texture.image.data as Uint8Array;
+  const textureData = (debugMode >= 13 ? pigmentTexture : activeTexture.texture).image.data as Uint8Array;
   const sourceSize = metadata.width;
   const targetSize = 144;
   textureCanvas.width = targetSize;
@@ -1955,7 +2031,11 @@ function applyTexturePreview(metadata: PaintTextureMetadata, debugMode: number):
       const g = textureData[source + 1] ?? 128;
       const broad = textureData[source + 2] ?? 128;
       const detail = textureData[source + 3] ?? 128;
-      if (debugMode === 2) {
+      if (debugMode === 13) {
+        image.data.set([r, g, 82, 255], target);
+      } else if (debugMode === 14) {
+        image.data.set([broad, broad, broad, 255], target);
+      } else if (debugMode === 2) {
         image.data.set([broad, broad, broad, 255], target);
       } else if (debugMode === 3 || debugMode === 6) {
         image.data.set([detail, detail, detail, 255], target);
@@ -1975,7 +2055,6 @@ function applyTexturePreview(metadata: PaintTextureMetadata, debugMode: number):
 }
 
 function animate(frameTime: number): void {
-  requestAnimationFrame(animate);
   const delta = Math.min(Math.max((frameTime - previousFrameTime) / 1000, 0), 0.05);
   previousFrameTime = frameTime;
   if (!paused) elapsedTime += delta;
@@ -2004,6 +2083,9 @@ function animate(frameTime: number): void {
     statsElapsed = 0;
     updateStats();
   }
+  // Schedule only a successful frame; a compile failure must not flood the
+  // browser with the same error every refresh tick during shader development.
+  requestAnimationFrame(animate);
 }
 
 function renderFrame(delta?: number): void {
@@ -2031,6 +2113,10 @@ function onResize(): void {
   const height = Math.max(viewport.clientHeight, 1);
   (paintGlobals.viewportSize.value as THREE.Vector2).set(width, height);
   camera.aspect = width / height;
+  // Preserve the composition's horizontal envelope on portrait screens.
+  camera.fov = THREE.MathUtils.radToDeg(2 * Math.atan(
+    Math.tan(THREE.MathUtils.degToRad(24)) * Math.max(1, 0.85 / camera.aspect),
+  ));
   camera.updateProjectionMatrix();
   renderer.setSize(width, height, false);
   composer.setSize(width, height);
@@ -2052,8 +2138,9 @@ function requiredElement<T extends Element>(selector: string): T {
 
 function createInterfaceMarkup(): string {
   return `
-    <main class="app-shell">
+    <main class="app-shell ${window.matchMedia('(max-width: 980px)').matches ? 'is-panel-hidden' : ''}">
       <section id="viewport" class="viewport">
+        <button id="panel-toggle" class="palette-toggle" data-toggle-panel type="button" aria-label="Toggle painter’s palette" aria-expanded="${!window.matchMedia('(max-width: 980px)').matches}" aria-controls="paint-panel">☷ Palette</button>
         <div id="loading" class="loading-card">
           <span class="loading-mark"></span>
           <span>Mixing pigments</span>
@@ -2064,7 +2151,7 @@ function createInterfaceMarkup(): string {
             <div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></div>
             <div>
               <p id="scene-eyebrow" class="kicker">THREE.JS R185 · ${initialScene.eyebrow}</p>
-              <h1>Paint / Lab</h1>
+              <h1>Paint / Lab<span class="brand-edition">THE ATELIER COLLECTION</span></h1>
             </div>
           </div>
           <label class="scene-picker" for="scene-select">
@@ -2114,18 +2201,30 @@ function createInterfaceMarkup(): string {
         </div>
       </section>
 
-      <aside class="control-panel" aria-label="Paint shader controls">
+      <aside id="paint-panel" class="control-panel" aria-label="Paint shader controls">
         <div class="panel-header">
           <div>
-            <p class="kicker">LIVE MATERIAL GRAPH</p>
-            <h2>Brush controls</h2>
+            <p class="kicker">MAKE YOUR MARK</p>
+            <h2>The painter’s palette</h2>
           </div>
+          <button class="palette-close" data-toggle-panel type="button" aria-label="Close painter’s palette">×</button>
         </div>
 
         <div class="panel-scroll">
+          <section class="medium-section">
+            <p class="medium-intro">A world made of brushstrokes.</p>
+            <div class="medium-picker" aria-label="Painting medium">
+              <button type="button" data-style="impasto" class="is-active" aria-pressed="true"><i class="swatch-oil"></i>Impasto</button>
+              <button type="button" data-style="gouache" aria-pressed="false"><i class="swatch-gouache"></i>Gouache</button>
+              <button type="button" data-style="study" aria-pressed="false"><i class="swatch-study"></i>Soft study</button>
+            </div>
+            ${rangeMarkup('Painterliness', 'painterliness', 'painterliness', 0, 1, 0.01)}
+            ${rangeMarkup('Pigment variation', 'pigment-variation', 'pigmentVariation', 0, 1.5, 0.01)}
+            ${rangeMarkup('Impasto relief', 'impasto-strength', 'impastoStrength', 0, 1.5, 0.01)}
+          </section>
           <details open>
             <summary><span>Stroke field</span><small>01</small></summary>
-            ${rangeMarkup('Brush scale', 'brush-scale', 'brushScale', 0.7, 8, 0.05)}
+            ${rangeMarkup('Brush scale', 'brush-scale', 'brushScale', 0.25, 8, 0.05)}
             ${rangeMarkup('Parallax depth', 'parallax-depth', 'parallaxDepth', 0, 0.12, 0.002)}
             ${rangeMarkup('Normal strength', 'normal-strength', 'normalStrength', 0, 1.8, 0.02)}
             ${rangeMarkup('Stroke contrast', 'stroke-contrast', 'strokeContrast', 0.2, 1, 0.01)}
@@ -2185,7 +2284,7 @@ function createInterfaceMarkup(): string {
             <div class="texture-card">
               <canvas id="texture-preview" width="144" height="144"></canvas>
               <div>
-                <span>ONE PACKED MAP</span>
+                <span>BRUSH + PIGMENT MAPS</span>
                 <strong id="texture-meta">512² · RG/B/A</strong>
                 <span>SEED <b id="seed-value">—</b></span>
                 <button id="seed-shuffle" type="button">Shuffle field</button>
@@ -2195,7 +2294,7 @@ function createInterfaceMarkup(): string {
               <span>Output view</span>
               <select id="debug-mode"></select>
             </label>
-            <p class="diagnostic-note"><span id="view-status">Final</span> · Surface-anchored brush outline · ACES output.</p>
+            <p class="diagnostic-note"><span id="view-status">Final</span> · Object-anchored pigment &amp; bristle relief.</p>
           </section>
 
           <section class="playback-section">

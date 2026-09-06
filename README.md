@@ -4,13 +4,20 @@ An interactive Three.js port and extension of Gabriel de Laubier's
 [Stylized Paint Shader Breakdown](https://cyn-prod.com/stylized-paint-shader-breakdown).
 The demo is pinned to **Three.js 0.185.1**.
 
-![Sunset Noir preset in the interactive Three.js paint shader laboratory](docs/screenshots/sunset-noir.png)
+The **Atelier collection** opens on a cypress-lined path through a poppy meadow.
+Switch to **A little sunshine** for sunflowers, ultramarine pottery, lemons and
+linen. All seven scenes share the new surface-anchored painting system.
 
-*Sunset Noir — the full interactive material laboratory and brush controls.*
+Overlapping opaque brush deposits own their pigment value, warm/cool variation,
+bristle relief and paint load. Mipmaps and derivative filtering keep the relief
+stable at a distance. **Impasto**, **Gouache** and **Soft study** offer distinct
+starting points, with live painterliness, pigment and relief controls.
 
-![Ultraviolet preset showing close-up procedural brushwork in Three.js](docs/screenshots/ultraviolet.png)
-
-*Ultraviolet — close-up brush texture, painted reflections, and broken outlines.*
+The **Palette** button opens or hides the controls. The shader toggle compares
+painted and native materials; Painterliness at zero restores the earlier shader
+treatment. Use Detail / Hero / Wide for repeatable compositions, and the
+Pigment deposits / Impasto relief diagnostics to inspect the underlying fields.
+The two new paintings render directly, without a painting post-process.
 
 ## Run
 
@@ -29,6 +36,8 @@ corepack pnpm run build
 
 Use the **Active scene** dropdown beneath the Paint/Lab mark to switch between:
 
+- The long way home — a procedural Provençal landscape (the default).
+- A little sunshine — a composed sunflower still life.
 - Material study — the original primitive shader laboratory.
 - Texture study — a ground-only comparison using the approved meadow, dense
   grass, dry grass, and under-forest leaf-litter maps from
@@ -142,8 +151,9 @@ provides:
   scale, and press `Esc` or click empty space to close it.
 - Live FPS, draw-call, and triangle counters.
 
-`Reset` restores seed `73021`, all shader values, object transforms, the Noir
-preset, the Hero camera, and freezes motion at `t = 0` for reproducible captures.
+`Reset` restores seed `73021`, scene-specific shader values and lighting,
+object transforms and the Hero camera, and freezes motion at `t = 0`.
+Run `pnpm run test:paint` to check the deterministic pigment-field invariants.
 
 ## Exporting a material setup
 
@@ -159,6 +169,7 @@ import {
   createPainterlyMaterial,
 } from './PainterlyMaterial.ts';
 import { createPaintTexture } from './paintTexture.ts';
+import { createPigmentTexture } from './pigmentTexture.ts';
 import exported from './paint-lab-tier-one-residence-noir.json';
 
 const packed = createPaintTexture({
@@ -169,7 +180,8 @@ const packed = createPaintTexture({
   bristleDensity: exported.paintTexture.bristleDensity,
   normalStrength: exported.paintTexture.normalStrength,
 });
-const paintGlobals = createPaintGlobalUniforms(packed.texture);
+const pigment = createPigmentTexture(exported.pigmentTexture.seed, exported.pigmentTexture.size);
+const paintGlobals = createPaintGlobalUniforms(packed.texture, pigment);
 applyPainterlyControls(paintGlobals, exported.controls);
 
 const material = createPainterlyMaterial(paintGlobals, {

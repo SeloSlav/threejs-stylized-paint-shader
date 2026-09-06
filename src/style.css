@@ -6,7 +6,7 @@
   font-family: 'Manrope', 'Segoe UI', sans-serif;
   font-synthesis: none;
   text-rendering: geometricPrecision;
-  --panel-width: 390px;
+  --panel-width: 340px;
   --paper: #f2eee7;
   --ink: #0b0d12;
   --muted: #858894;
@@ -1052,3 +1052,59 @@ select {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* The atelier: quiet framing around a bright, tactile painting. */
+.brand-edition { display: block; margin-top: 8px; font: 8px 'DM Mono', monospace; letter-spacing: .2em; color: #f2dfbb; }
+.brand-lockup { padding: 13px 16px; border: 1px solid #ffffff20; background: #292b28aa; backdrop-filter: blur(16px); border-radius: 3px; }
+.brand { top: 24px; left: 24px; gap: 10px; width: 265px; }
+.brand .kicker { display: none; }
+.brand h1 { font-size: 24px; }
+.scene-picker { padding: 10px; background: #252823de; box-shadow: none; }
+.shader-toggle { background: #252823d9; box-shadow: none; }
+.panel-header { background: #171c1a; }
+.panel-header h2 { font-family: Georgia, 'Times New Roman', serif; font-weight: 400; font-size: 25px; }
+.control-panel { background: #151a18; }
+.medium-section { padding: 0 0 18px; border-bottom: 1px solid #ffffff18; margin-bottom: 10px; }
+.medium-intro { margin: 0 0 18px; font: italic 17px Georgia, serif; color: #ccbd9f; }
+.medium-picker { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; margin-bottom: 20px; }
+.medium-picker button { display: grid; justify-items: center; gap: 10px; padding: 12px 5px; border: 1px solid #ffffff16; border-radius: 4px; background: #ffffff04; font-size: 10px; color: #b9bcb4; cursor: pointer; }
+.medium-picker button:hover { background: #ffffff0c; }
+.medium-picker button.is-active { color: #f5dfb2; border-color: #d5b57d; background: #d5b57d10; }
+.medium-picker i { display: block; width: 43px; height: 24px; border-radius: 30% 10% 35% 8%; transform: rotate(-9deg); }
+.swatch-oil { background: repeating-linear-gradient(4deg, #d59b49 0 2px, #e8c56d 3px, #cda15c 4px, #f3d085 6px); }
+.swatch-gouache { background: linear-gradient(115deg, #6e9b91 50%, #8fbbb1 51%); }
+.swatch-study { background: linear-gradient(110deg, #c5928580, #ce9a8c, #e9c4a880); }
+.shot-caption { pointer-events: none; padding: 17px 20px; background: linear-gradient(110deg, #222921b8, #22292130); border-left: 2px solid #e2c087; border-radius: 0 3px 3px 0; max-width: calc(100% - 48px); }
+#preset-name { font: italic 38px Georgia, 'Times New Roman', serif; letter-spacing: -.035em; }
+#preset-eyebrow { color: #e7c998; font-size: 8px; }
+#object-label { font-size: 9px; color: #e8e0d1; }
+.runtime-pill { opacity: .6; font-size: 8px; }
+.primary-button { background: #d6af74 !important; color: #1c241f !important; }
+button:focus-visible, select:focus-visible { outline: 2px solid #e7c998; outline-offset: 3px; }
+@media (max-width: 900px) {
+  :root { --panel-width: 300px; }
+  .brand { left: 16px; top: 16px; width: 225px; }
+  .brand-lockup { padding: 10px; }
+  #preset-name { font-size: 29px; }
+}
+@media (max-width: 700px) {
+  .brand { width: 202px; top: 12px; left: 12px; gap: 7px; }
+  .brand-lockup { padding: 7px 9px; }
+  .brand-edition { font-size: 6px; margin-top: 4px; }
+  .brand h1 { font-size: 19px; }
+  .brand-mark { display: none; }
+  .scene-picker > span { display: none; }
+  .shot-caption { padding: 11px 12px; left: 12px; bottom: 70px; }
+  #preset-name { font-size: 26px; }
+  #object-label { display: none; }
+  .runtime-pill { display: none; }
+}
+.medium-section { padding: 20px 24px; }
+@media (min-width: 981px) { .panel-footer { padding-right: 18px; padding-left: 18px; } .panel-footer button { padding: 10px 7px; white-space: nowrap; } }
+.palette-toggle { position: absolute; z-index: 6; top: 25px; right: 24px; padding: 10px 14px; border: 1px solid #ffffff30; border-radius: 3px; background: #252823d9; color: #ebddc2; backdrop-filter: blur(12px); font-size: 11px; cursor: pointer; }
+.palette-close { background: transparent; font-size: 25px; color: #b4b6a8; cursor: pointer; padding: 5px; }
+.runtime-pill { top: 74px; }
+.app-shell.is-panel-hidden { grid-template-columns: minmax(0, 1fr) 0; }
+.is-panel-hidden .control-panel { visibility: hidden; pointer-events: none; }
+@media (max-width: 980px) { .control-panel { z-index: 9; } .palette-toggle { right: 16px; top: 16px; } }
+@media (prefers-reduced-motion: reduce) { .app-shell { transition: none; } }

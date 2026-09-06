@@ -1,5 +1,8 @@
 # Visual validation record
 
+The current release is covered by [Atelier validation](docs/ATELIER_VALIDATION.md).
+The sections below retain the earlier shader's validation history.
+
 ## Paint-first lighting revision gate
 
 The painterly-light revision is accepted for the material-study target. The

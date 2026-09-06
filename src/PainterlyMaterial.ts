@@ -14,6 +14,8 @@ export const PAINT_DEBUG_MODES = [
   'Texture weights',
   'White paint mask',
   'Macro pigment regions',
+  'Pigment deposits',
+  'Impasto relief',
 ] as const;
 
 export type PaintDebugMode = (typeof PAINT_DEBUG_MODES)[number];
@@ -22,6 +24,10 @@ type PaintUniform = { value: number | THREE.Texture | THREE.Color | THREE.Vector
 
 export interface PaintGlobalUniforms {
   paintMap: PaintUniform;
+  pigmentMap: PaintUniform;
+  painterliness: PaintUniform;
+  pigmentVariation: PaintUniform;
+  impastoStrength: PaintUniform;
   lightDirection: PaintUniform;
   viewportSize: PaintUniform;
   outlineZoomScale: PaintUniform;
@@ -69,6 +75,9 @@ export interface PaintGlobalUniforms {
  * authored slider values, so they are deliberately excluded.
  */
 export const PAINTERLY_CONTROL_KEYS = [
+  'painterliness',
+  'pigmentVariation',
+  'impastoStrength',
   'brushScale',
   'parallaxDepth',
   'normalStrength',
@@ -156,6 +165,7 @@ export interface PainterlyMaterialOptions {
   objectTextureScale?: number;
   lightPaintScale?: number;
   macroVariation?: number;
+  pigmentContrast?: number;
   roughness?: number;
   metalness?: number;
   clearcoat?: number;
@@ -346,6 +356,11 @@ varying vec3 vPaintObjectNormal;
 `;
 
 const fragmentPrelude = /* glsl */ `
+uniform sampler2D uPigmentMap;
+uniform float uPainterliness;
+uniform float uPigmentVariation;
+uniform float uPigmentContrast;
+uniform float uImpastoStrength;
 uniform sampler2D uPaintMap;
 uniform sampler2D uSurfaceMap;
 uniform vec3 uPaintDark;
@@ -404,6 +419,7 @@ float paintHighlightImpasto = 0.0;
 float paintDirectWhiteMask = 0.0;
 float paintStrokeBodyField = 0.0;
 float paintMacroRegion = 0.0;
+vec4 pigmentDeposit = vec4( 0.5 );
 float paintFresnel = 0.0;
 float paintErosionMask = 0.0;
 float paintShadowMask = 1.0;
@@ -411,6 +427,14 @@ vec3 paintSourceAlbedo = vec3( 1.0 );
 vec4 paintSurfaceWeights = vec4( 1.0, 0.0, 0.0, 0.0 );
 
 ${edgeFieldFunctions}
+
+vec4 samplePigment( vec3 p, vec3 n ) {
+  vec3 w = pow( abs( normalize( n ) ), vec3( 8.0 ) );
+  w /= max( w.x + w.y + w.z, 0.00001 );
+  return texture2D( uPigmentMap, p.zy ) * w.x
+    + texture2D( uPigmentMap, p.xz + vec2( 0.31, 0.17 ) ) * w.y
+    + texture2D( uPigmentMap, p.xy + vec2( 0.67, 0.43 ) ) * w.z;
+}
 
 vec3 perturbPaintNormalFromHeight(
   vec3 surfaceNormal,
@@ -579,6 +603,7 @@ vec3 paintAlbedo = mix(
   );
 #endif
 
+if ( uPainterliness < 0.999 ) {
 vec3 paintBandNormal = paintResolvedNormalWorld;
 #ifdef PAINT_TEXTURELESS_SURFACE
   paintBandNormal = normalize( mix(
@@ -809,8 +834,55 @@ float paintNdotL = dot( paintBandNormal, normalize( uPaintLightDirection ) );
   );
 #endif
 
+}
+// A surface-locked painting: opaque pigment deposits carry their own value,
+// temperature and bristle relief. Light breaks along those same deposits.
+// Triplanar coordinates stay in the rest pose on animated meshes.
+pigmentDeposit = samplePigment( paintObjectCoordinate * 0.74, vPaintObjectNormal );
+float pigmentStroke = smoothstep( 0.32 - uStrokeContrast * 0.16, 0.68 + uStrokeContrast * 0.16, pigmentDeposit.r );
+float pigmentWarmth = smoothstep( 0.15, 0.86, pigmentDeposit.g );
+float pigmentAmount = uPigmentVariation * uPigmentContrast;
+vec3 pigmentBase = mix( uPaintDark, uPaintLight, 0.64 );
+pigmentBase = mix( pigmentBase, paintSourceAlbedo, saturate( uSourceAlbedoWeight ) );
+float pigmentLight = dot( paintBaseNormal, normalize( uPaintLightDirection ) );
+float pigmentBrokenLight = pigmentLight + ( pigmentStroke - 0.5 ) * 0.38 * uPainterliness;
+float pigmentFeather = max( uBandSoftness, fwidth( pigmentBrokenLight ) );
+float pigmentMid = smoothstep( uShadowThreshold - pigmentFeather, uShadowThreshold + pigmentFeather, pigmentBrokenLight );
+float pigmentLit = smoothstep( uLightThreshold - pigmentFeather, uLightThreshold + pigmentFeather, pigmentBrokenLight );
+vec3 pigmentCool = pigmentBase * vec3( 0.62, 0.77, 1.10 ) + vec3( 0.023, 0.018, 0.045 );
+vec3 pigmentWarm = pigmentBase * vec3( 1.16, 1.02, 0.72 ) + vec3( 0.052, 0.024, 0.009 );
+vec3 pigmentColor = mix( pigmentCool, pigmentWarm, pigmentWarmth );
+pigmentColor = mix( pigmentBase, pigmentColor, pigmentAmount );
+pigmentColor *= 1.0 + ( pigmentStroke - 0.5 ) * 0.95 * pigmentAmount;
+vec3 pigmentShadow = pigmentColor * mix( 0.19, 0.52, uShadowValue * 2.0 ) * vec3( 0.72, 0.83, 1.18 );
+pigmentShadow += vec3( 0.012, 0.012, 0.027 );
+vec3 pigmentMidtone = pigmentColor * mix( 0.53, 1.05, uMidtoneValue );
+vec3 pigmentSun = pigmentColor * vec3( 1.24, 1.15, 0.96 );
+vec3 pigmentPaint = mix( pigmentShadow, pigmentMidtone, pigmentMid );
+pigmentPaint = mix( pigmentPaint, pigmentSun, pigmentLit );
+// A deposited ridge catches light on one side; the recessed side retains
+// underpaint. Mipmaps and footprint attenuation remove subpixel bristles.
+float pigmentFootprint = length( fwidth( paintObjectCoordinate ) ) * 512.0;
+float pigmentReliefVisibility = 1.0 - smoothstep( 3.0, 15.0, pigmentFootprint );
+vec3 pigmentNormal = perturbPaintNormalFromHeight(
+  paintBaseNormal, vPaintWorldPosition, pigmentDeposit.b,
+  0.012 * uImpastoStrength * pigmentReliefVisibility * uPigmentContrast
+    * uPaintNormalStrength / 0.66
+);
+float pigmentRidgeLight = dot( pigmentNormal - paintBaseNormal, normalize( uPaintLightDirection ) );
+pigmentPaint *= 1.0 + clamp( pigmentRidgeLight * 1.9, -0.28, 0.36 ) * uImpastoStrength;
+float pigmentScumble = smoothstep( 0.52, 0.85, pigmentDeposit.a ) * pigmentLit * uDetailStrength;
+pigmentPaint = mix( pigmentPaint, pigmentPaint * 1.3 + vec3( 0.09, 0.075, 0.04 ), pigmentScumble * uImpastoStrength * 0.46 );
+paintDirectWhiteMask = mix( paintDirectWhiteMask, pigmentScumble * uImpastoStrength * 0.46, uPainterliness );
+diffuseColor.rgb = mix( diffuseColor.rgb, pigmentPaint, uPainterliness );
+paintResolvedNormalWorld = normalize( mix( paintResolvedNormalWorld, pigmentNormal, uPainterliness ) );
+paintStrokeBodyField = mix( paintStrokeBodyField, pigmentStroke, uPainterliness );
+paintToonBand = mix( paintToonBand, pigmentMid * 0.45 + pigmentLit * 0.55, uPainterliness );
+paintMacroRegion = mix( paintMacroRegion, pigmentWarmth, uPainterliness );
+
+vec4 paintReflectionPacked = paintPacked;
+if ( uOilStrength > 0.001 || ( uPaintDebugMode > 4.5 && uPaintDebugMode < 5.5 ) ) {
 float paintReflectionOffset = 0.055;
-vec4 paintReflectionPacked;
 float paintReflectionBroadX;
 float paintReflectionBroadY;
 vec3 paintReflectionTangent = paintTangent;
@@ -933,7 +1005,9 @@ paintHighlightImpasto = saturate(
   * mix( 0.70, 1.22, paintReflectionBristles )
 );
 
+}
 paintFresnel = pow( 1.0 - saturate( abs( dot( paintSmoothNormal, paintViewDirection ) ) ), uRimPower );
+if ( uEdgeErosion > 0.001 || ( uPaintDebugMode > 5.5 && uPaintDebugMode < 8.5 ) ) {
 float paintCurvature = length( fwidth( paintSmoothNormal ) ) * uCurvatureGuard;
 float paintCurvedSurface = smoothstep( 0.006, 0.055, paintCurvature );
 vec4 paintEdgePacked = samplePaintEdgeField(
@@ -969,6 +1043,8 @@ paintErosionMask = paintSilhouetteZone
   * paintCurvedSurface
   * saturate( uEdgeErosion );
 
+}
+if ( uPaintDebugMode > 6.5 && uPaintDebugMode < 7.5 ) {
 vec4 paintShadowPacked = samplePaintEdgeFieldScaled(
   vPaintObjectPosition,
   vPaintObjectNormal,
@@ -997,6 +1073,7 @@ paintShadowMask = max(
   )
 );
 
+}
 if ( uPaintDebugMode < 0.5 && paintErosionMask > 0.5 ) discard;
 `;
 
@@ -1012,7 +1089,7 @@ float paintBaseLuminance = dot(
   vec3( 0.2126, 0.7152, 0.0722 )
 );
 float paintPhysicalLuminance = dot(
-  totalDiffuse,
+  mix( totalDiffuse, reflectedLight.directDiffuse, uPainterliness ),
   vec3( 0.2126, 0.7152, 0.0722 )
 );
 float paintReceiverLight = clamp(
@@ -1022,7 +1099,7 @@ float paintReceiverLight = clamp(
 );
 float paintReceiverModulation = mix(
 #ifdef PAINT_TEXTURELESS_SURFACE
-  0.84,
+  mix( 0.84, 0.60, uPainterliness ),
 #else
   0.66,
 #endif
@@ -1092,18 +1169,26 @@ if ( uPaintDebugMode > 0.5 && uPaintDebugMode < 1.5 ) {
     vec3( 1.0, 0.93, 0.78 ),
     max( paintDirectWhiteMask, paintHighlightImpasto * uOilStrength )
   );
-} else if ( uPaintDebugMode > 11.5 ) {
+} else if ( uPaintDebugMode > 11.5 && uPaintDebugMode < 12.5 ) {
   outgoingLight = mix(
     vec3( 0.025, 0.008, 0.04 ),
     vec3( 1.0, 0.15, 0.48 ),
     paintMacroRegion
   );
+} else if ( uPaintDebugMode > 12.5 && uPaintDebugMode < 13.5 ) {
+  outgoingLight = vec3( pigmentDeposit.r, pigmentDeposit.g, 0.32 );
+} else if ( uPaintDebugMode > 13.5 ) {
+  outgoingLight = vec3( pigmentDeposit.b );
 }
 `;
 
-export function createPaintGlobalUniforms(texture: THREE.Texture): PaintGlobalUniforms {
+export function createPaintGlobalUniforms(texture: THREE.Texture, pigmentTexture: THREE.Texture = texture): PaintGlobalUniforms {
   return {
     paintMap: { value: texture },
+    pigmentMap: { value: pigmentTexture },
+    painterliness: { value: 1 },
+    pigmentVariation: { value: 0.85 },
+    impastoStrength: { value: 0.85 },
     lightDirection: { value: new THREE.Vector3(-0.45, 0.82, 0.34).normalize() },
     viewportSize: { value: new THREE.Vector2(1, 1) },
     outlineZoomScale: { value: 1 },
@@ -1156,6 +1241,10 @@ function bindUniforms(
   surface: PainterlyMaterial['paintSurface'],
 ): void {
   shaderUniforms.uPaintMap = globals.paintMap;
+  shaderUniforms.uPigmentMap = globals.pigmentMap;
+  shaderUniforms.uPainterliness = globals.painterliness;
+  shaderUniforms.uPigmentVariation = globals.pigmentVariation;
+  shaderUniforms.uImpastoStrength = globals.impastoStrength;
   shaderUniforms.uSurfaceMap = surface.map;
   shaderUniforms.uPaintLightDirection = globals.lightDirection;
   shaderUniforms.uBrushScale = globals.brushScale;
@@ -1243,6 +1332,7 @@ export function createPainterlyMaterial(
   }
 
   material.onBeforeCompile = (shader: CompiledShader) => {
+    shader.uniforms.uPigmentContrast = { value: options.pigmentContrast ?? 0.75 };
     bindUniforms(
       shader.uniforms,
       globals,
@@ -1283,7 +1373,7 @@ export function createPainterlyMaterial(
         '#include <roughnessmap_fragment>',
         `#include <roughnessmap_fragment>
         roughnessFactor = clamp(
-          roughnessFactor + ( paintPacked.a - 0.5 ) * uRoughnessVariation,
+          roughnessFactor + ( mix( paintPacked.a, pigmentDeposit.b, uPainterliness ) - 0.5 ) * uRoughnessVariation,
           0.08,
           0.98
         );
@@ -1304,7 +1394,7 @@ export function createPainterlyMaterial(
   };
 
   material.customProgramCacheKey = () => [
-    'painterly-physical-v12-macro-pigment',
+    'painterly-physical-v13-layered-impasto',
     options.triplanarMacro ? 'macro' : 'uv',
     options.texturelessSurface ? 'textureless' : 'textured',
     options.preserveSourceAlbedo ? 'source-color' : 'graded-color',

@@ -338,6 +338,10 @@ function configurePainterlyTextureStudyMaterial(
   const parentCacheKey = material.customProgramCacheKey.bind(material);
   material.onBeforeCompile = (shader, renderer) => {
     parentCompile(shader, renderer);
+    // Twelve source maps + two paint maps + shadow + r185's DFG LUT use all
+    // sixteen guaranteed fragment samplers. This matte terrain keeps its
+    // hemisphere/direct light and omits the optional environment reflection.
+    shader.fragmentShader = `#undef USE_ENVMAP\n${shader.fragmentShader}`;
     bindTextureStudyUniforms(shader.uniforms, textures);
     shader.fragmentShader = replaceRequired(
       shader.fragmentShader,
@@ -391,7 +395,7 @@ function configurePainterlyTextureStudyMaterial(
       'painterly AO blend',
     );
   };
-  material.customProgramCacheKey = () => `${parentCacheKey()}-texture-study-v1`;
+  material.customProgramCacheKey = () => `${parentCacheKey()}-texture-study-v2-matte-16-samplers`;
   material.needsUpdate = true;
 }
 
