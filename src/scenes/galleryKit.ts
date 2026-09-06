@@ -17,10 +17,17 @@ export const colors = (color: string) => ({
 /** World-sized pieces are compiled by pigment, preserving individual hard
  * normals and UV islands. This keeps complete little worlds under ~65 draws. */
 export class GalleryKit {
+  private frameMatrix = new THREE.Matrix4();
   private batches = new Map<string, { pieces: THREE.BufferGeometry[]; color: string; scale: number; contrast: number; glow: number; label: string }>();
   constructor(readonly ctx: SceneBuildContext) {}
+  frame(p: P, rotation: P, scale: number, build: () => void) {
+    const previous = this.frameMatrix;
+    this.frameMatrix = previous.clone().multiply(new THREE.Matrix4().compose(vec(p), new THREE.Quaternion().setFromEuler(new THREE.Euler(...rotation)), new THREE.Vector3().setScalar(scale)));
+    try { build(); } finally { this.frameMatrix = previous; }
+  }
   add(g: THREE.BufferGeometry, color: string, p: P = [0, 0, 0], scale: P = [1, 1, 1], rotation: P = [0, 0, 0], contrast = 0.55, brushScale = 0.32, glow = 0, label = 'Painted details') {
     g.applyMatrix4(new THREE.Matrix4().compose(vec(p), new THREE.Quaternion().setFromEuler(new THREE.Euler(...rotation)), vec(scale)));
+    g.applyMatrix4(this.frameMatrix);
     const key = `${color}/${contrast}/${brushScale}/${glow}`;
     let batch = this.batches.get(key);
     if (!batch) { batch = { pieces: [], color, scale: brushScale, contrast, glow, label }; this.batches.set(key, batch); }
