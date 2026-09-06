@@ -8,6 +8,14 @@ The **Atelier collection** opens on a cypress-lined path through a poppy meadow.
 Switch to **A little sunshine** for sunflowers, ultramarine pottery, lemons and
 linen. All seven scenes share the new surface-anchored painting system.
 
+**01 / The long way home**
+
+![The long way home — painterly cypresses, a farmhouse, and a path through a poppy meadow](docs/screenshots/the-long-way-home.jpg)
+
+**02 / A little sunshine**
+
+![A little sunshine — painterly sunflowers in a blue ceramic jug with lemons and linen](docs/screenshots/a-little-sunshine.jpg)
+
 Overlapping opaque brush deposits own their pigment value, warm/cool variation,
 bristle relief and paint load. Mipmaps and derivative filtering keep the relief
 stable at a distance. **Impasto**, **Gouache** and **Soft study** offer distinct

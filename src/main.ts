@@ -15,7 +15,6 @@ import {
   createPaintGlobalUniforms,
   createPainterlyMaterial,
   createPainterlyDepthMaterial,
-  createPaintShellMaterial,
   debugModeIndex,
   installSmoothNormalAttribute,
   readPainterlyControls,
@@ -999,6 +998,8 @@ function createPaintedObject(
     ? options.geometry
     : installSmoothNormalAttribute(options.geometry, options.smoothNormals ?? 'existing');
   const material = createPainterlyMaterial(paintGlobals, {
+    emissive: options.emissive,
+    emissiveIntensity: options.emissiveIntensity,
     palette,
     surfaceColor: options.surfaceColor,
     surfaceMap: options.surfaceMap,
@@ -1052,60 +1053,7 @@ function createPaintedObject(
   group.add(base);
 
   const shells: THREE.ShaderMaterial[] = [];
-  if (
-    outlineRequested
-    && currentScene.id === 'material-study'
-    && options.shells !== false
-  ) {
-      const rimMaterial = createPaintShellMaterial(paintGlobals, {
-        kind: 'rim',
-        color: palette.rim,
-        layer: 0,
-        widthMultiplier: 1,
-        objectWidthMultiplier: options.shellWidthScale,
-        coverageBias: 0.08,
-        objectTextureScale: options.objectTextureScale,
-      });
-      const rim = new THREE.Mesh(geometry, rimMaterial);
-      rim.renderOrder = -1;
-      rim.userData.paintShell = true;
-      group.add(rim);
-      shells.push(rimMaterial);
-
-      const outlineA = createPaintShellMaterial(paintGlobals, {
-        kind: 'outline',
-        color: palette.outline,
-        layer: 1,
-        widthMultiplier: 1,
-        objectWidthMultiplier: options.shellWidthScale,
-        coverageBias: -0.01,
-        offsetDirection: new THREE.Vector2(0.85, 0.28).normalize(),
-        objectTextureScale: options.objectTextureScale,
-      });
-      const outlineMeshA = new THREE.Mesh(geometry, outlineA);
-      outlineMeshA.renderOrder = -3;
-      outlineMeshA.userData.paintShell = true;
-      group.add(outlineMeshA);
-      shells.push(outlineA);
-
-      const outlineB = createPaintShellMaterial(paintGlobals, {
-        kind: 'outline',
-        color: palette.outlineSecondary,
-        layer: 2,
-        coverageBias: 0.025,
-        offsetDirection: new THREE.Vector2(-0.52, 0.55).normalize(),
-        offsetMultiplier: 1.35,
-        objectWidthMultiplier: options.shellWidthScale,
-        objectTextureScale: options.objectTextureScale,
-      });
-      const outlineMeshB = new THREE.Mesh(geometry, outlineB);
-      outlineMeshB.renderOrder = -4;
-      outlineMeshB.userData.paintShell = true;
-      group.add(outlineMeshB);
-      shells.push(outlineB);
-  } else if (outlineRequested && currentScene.id !== 'material-study') {
-    outlinedObjects.push(base);
-  }
+  if (outlineRequested) outlinedObjects.push(base);
 
   const paintedObject: PaintedObject = {
     group,
@@ -1114,7 +1062,7 @@ function createPaintedObject(
     nativeMaterial,
     depthMaterial,
     outlineEnabled: outlineRequested,
-    screenOutlineEnabled: outlineRequested && currentScene.id !== 'material-study',
+    screenOutlineEnabled: outlineRequested,
     shells,
     paletteIndex,
     outlinePalette: {
@@ -1178,6 +1126,8 @@ function createNativeMaterial(
   const hasSurfaceMap = Boolean(options.surfaceMap) && (options.surfaceMapStrength ?? 1) > 0;
   return new THREE.MeshPhysicalMaterial({
     name: `${options.label} · native`,
+    emissive: options.emissive ?? '#000000',
+    emissiveIntensity: options.emissiveIntensity ?? 0,
     color: options.surfaceColor ?? (hasSurfaceMap ? 0xffffff : palette.light),
     map: hasSurfaceMap ? options.surfaceMap ?? null : null,
     alphaTest: options.surfaceAlphaTest ?? 0,
@@ -1404,6 +1354,19 @@ function applyReferenceLook(resetOutlineColors = false): void {
   }
   if (scene.fog instanceof THREE.FogExp2) {
     scene.fog.density = currentScene.id === 'provence' ? 0.005 : 0.009;
+  }
+  const lighting = currentScene.lighting;
+  if (lighting) {
+    skyUniforms.top.value.set(lighting.top);
+    skyUniforms.horizon.value.set(lighting.horizon);
+    skyUniforms.abyss.value.set(lighting.abyss);
+    if (scene.fog instanceof THREE.FogExp2) {
+      scene.fog.color.set(lighting.fog); scene.fog.density = lighting.fogDensity;
+    }
+    keyLight.color.set(lighting.key); keyLight.intensity = lighting.keyIntensity;
+    fillLight.color.set(lighting.fill); fillLight.intensity = lighting.fillIntensity;
+    accentLight.intensity = 0;
+    renderer.toneMappingExposure = lighting.exposure;
   }
 
   for (const painted of paintedObjects) {
@@ -1852,7 +1815,7 @@ function onPointerDown(event: PointerEvent): void {
 }
 
 function onPointerUp(event: PointerEvent): void {
-  if (event.button !== 0 || currentScene.id !== 'material-study') return;
+  if (event.button !== 0 || !event.shiftKey) return;
   if (pointerGestureMoved || pointerGestureStartedOnGizmo || transformControls.dragging) return;
   const bounds = renderer.domElement.getBoundingClientRect();
   pointer.x = ((event.clientX - bounds.left) / bounds.width) * 2 - 1;

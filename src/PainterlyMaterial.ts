@@ -153,6 +153,8 @@ export interface PaintPalette {
 }
 
 export interface PainterlyMaterialOptions {
+  emissive?: THREE.ColorRepresentation;
+  emissiveIntensity?: number;
   palette: PaintPalette;
   surfaceColor?: THREE.ColorRepresentation;
   surfaceMap?: THREE.Texture | null;
@@ -1292,6 +1294,8 @@ export function createPainterlyMaterial(
 ): PainterlyMaterial {
   const material = new THREE.MeshPhysicalMaterial({
     color: 0xffffff,
+    emissive: options.emissive ?? '#000000',
+    emissiveIntensity: options.emissiveIntensity ?? 0,
     map: globals.paintMap.value as THREE.Texture,
     roughness: Math.max(options.roughness ?? 0.47, 0.82),
     metalness: 0,
