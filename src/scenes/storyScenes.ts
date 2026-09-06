@@ -49,7 +49,7 @@ export function buildNightCafe(ctx: SceneBuildContext) {
   for (let iz = 0; iz < 24; iz++) for (let ix = 0; ix < 28; ix++) {
     const x = (ix - 14) * 0.78 + (iz % 2) * 0.39, z = iz * 0.58 - 5;
     if (z < -1.3 && Math.abs(x) < 5.6) continue;
-    k.box([x, -0.07 + random() * 0.015, z], [0.73, 0.1, 0.53], ['#354b62', '#3b5368', '#40536b'][Math.floor(random() * 3)]!, [0, 0, 0], 0.05);
+    k.box([x, -0.07 + random() * 0.015, z], [0.73, 0.1, 0.53], ['#354b62', '#3b5368', '#40536b'][Math.floor(random() * 3)]!, [0, 0, 0], 0.05, 0.25);
   }
   k.add(new THREE.BoxGeometry(11.2, 7.4, 5), '#a46846', [0, 3.6, -4], [1, 1, 1], [0, 0, 0], 0.32, 0.22, 0, 'The café after dark');
   k.box([0, 7.3, -4], [11.7, 0.28, 5.4], '#3a5264');
@@ -103,12 +103,12 @@ export function buildNightCafe(ctx: SceneBuildContext) {
   }
   for (let i = 0; i < 7; i++) {
     const x = -23 + i * 7.8, h = 9 + random() * 6;
-    k.box([x, h / 2 - 0.1, -15], [6.9, h, 6], ['#293d5b', '#34465f', '#354a69'][i % 3]!);
+    k.box([x, h / 2 - 0.1, -15], [6.9, h, 6], ['#293d5b', '#34465f', '#354a69'][i % 3]!, [0, 0, 0], 0, 0.15);
     for (let row = 0; row < 4; row++) for (let col = 0; col < 3; col++) {
       k.add(new THREE.BoxGeometry(0.72, 1.0, 0.1), random() > 0.5 ? '#be9b60' : '#4c657b', [x - 2 + col * 1.85, 1.8 + row * 2, -11.94], [1, 1, 1], [0, 0, 0], 0.2, 0.3, 0.12);
     }
   }
-  k.glow([7.5, 14, -18], [1.08, 1.08, 0.18], '#ecd9ad', 0.65);
+  k.glow([-5.5, 12.7, -18], [1.08, 1.08, 0.18], '#ecd9ad', 0.65);
   for (let i = 0; i < 35; i++) k.glow([(random() - 0.5) * 49, 11 + random() * 16, -25], [0.025 + random() * 0.035, 0.04, 0.02], '#c7d0c6', 0.5);
   k.finish();
 }
@@ -135,11 +135,11 @@ function duck(k: GalleryKit, p: P, scale = 1, yaw = 0, captain = false) {
 
 export function buildDuckAdmiral(ctx: SceneBuildContext) {
   const k = new GalleryKit(ctx), random = seeded(26312);
-  k.box([0, -0.22, 0], [32, 0.3, 30], '#a69682');
-  for (let x = -10; x <= 10; x++) for (let z = -8; z <= 9; z++) k.box([x * 1.08, -0.05, z * 1.08], [1.045, 0.12, 1.045], (x + z) % 2 ? '#95b4ad' : '#e0d6b7');
-  k.add(new THREE.BoxGeometry(28, 15, 0.25), '#c7aea0', [0, 7.3, -6], [1, 1, 1], [0, 0, 0], 0.18, 0.18);
-  k.box([0, 1.7, -5.79], [28, 0.15, 0.14], '#6c9892');
-  k.box([0, 0.12, -5.79], [28, 0.24, 0.15], '#638a85');
+  k.box([0, -0.22, 0], [100, 0.3, 100], '#a69682');
+  for (let x = -10; x <= 10; x++) for (let z = -8; z <= 9; z++) k.box([x * 1.08, -0.05, z * 1.08], [1.045, 0.12, 1.045], (x + z) % 2 ? '#95b4ad' : '#e0d6b7', [0, 0, 0], 0, 0.25);
+  k.add(new THREE.BoxGeometry(70, 25, 0.25), '#c7aea0', [0, 12.3, -6], [1, 1, 1], [0, 0, 0], 0.1, 0.18);
+  k.box([0, 1.7, -5.79], [70, 0.15, 0.14], '#6c9892');
+  k.box([0, 0.12, -5.79], [70, 0.24, 0.15], '#638a85');
   // The tub is a continuous revolved bowl with an inner wall and rolled rim.
   k.lathe([[0, 0], [0.8, 0], [1.08, 0.15], [1.3, 0.85], [1.43, 1.45], [1.4, 1.53], [1.28, 1.51], [1.16, 0.89], [0.99, 0.32], [0, 0.27]], [0, 0.65, 0], '#e5dcc5', [2.45, 1, 1.3]);
   k.torus([0, 2.13, 0], 1.35, 0.065, '#f0e5cd', [Math.PI / 2, 0, 0], [2.45, 1.3, 1]);
@@ -236,8 +236,8 @@ export function buildPigeonMeeting(ctx: SceneBuildContext) {
   // Rooftops in receding violet/coral planes, with miniature chimney accents.
   for (let i = 0; i < 15; i++) {
     const x = (i - 7) * 3.8, h = 2.1 + random() * 4, z = -11 - random() * 8;
-    k.box([x, h / 2 - 0.8, z], [3.3, h, 3.8], ['#988b9f', '#bba09e', '#a392a5'][i % 3]!);
-    k.add(new THREE.ConeGeometry(2.85, 1.65, 4), '#71798d', [x, h - 0.15, z], [1, 1, 0.92], [0, Math.PI / 4, 0]);
+    k.box([x, h / 2 - 0.8, z], [3.3, h, 3.8], ['#988b9f', '#bba09e', '#a392a5'][i % 3]!, [0, 0, 0], 0, 0.16);
+    k.add(new THREE.ConeGeometry(2.85, 1.65, 4), '#71798d', [x, h - 0.15, z], [1, 1, 0.92], [0, Math.PI / 4, 0], 0.18);
     k.box([x + 0.75, h + 0.65, z], [0.45, 1.6, 0.5], '#b69187');
     for (let j = 0; j < 3; j++) k.box([x - 1.05 + j * 1.05, h * 0.55, z + 1.93], [0.42, 0.7, 0.05], '#e0b989');
   }
@@ -272,18 +272,21 @@ export function buildSnailRace(ctx: SceneBuildContext) {
   const k = new GalleryKit(ctx), random = seeded(77413);
   k.add(new THREE.BoxGeometry(65, 0.3, 65), '#a3ab6a', [0, -0.28, -8], [1, 1, 1], [0, 0, 0], 0.38, 0.16);
   k.add(new THREE.BoxGeometry(11.5, 0.14, 24), '#c6ad82', [0, -0.035, -2], [1, 1, 1], [0, 0, 0], 0.3, 0.24, 0, 'The slow lane');
-  for (const x of [-3.6, 0, 3.6]) k.box([x, 0.05, -2], [0.065, 0.015, 23], '#e4d5ae');
+  for (const x of [-4.8, -1.6, 1.6, 4.8]) k.box([x, 0.05, -2], [0.065, 0.015, 23], '#e4d5ae');
   for (let i = 0; i < 14; i++) for (let j = 0; j < 2; j++) k.box([-5.15 + i * 0.79, 0.065, 3.55 + j * 0.7], [0.79, 0.018, 0.7], (i + j) % 2 ? '#43545b' : '#f0dfb7');
   snail(k, [-3.05, 0.07, 0.5], 1.12, '#b66e60', 0.05, '01');
   snail(k, [0, 0.07, -1.15], 1.36, '#5f96a0', -0.1, '02');
   snail(k, [3.2, 0.07, -2.9], 1.0, '#b89758', -0.15, '03');
   for (const x of [-5.75, 5.75]) {
-    k.cylinder([x, 2.2, 4], 0.11, 4.45, '#a07850');
-    k.glow([x, 4.5, 4], [0.17, 0.17, 0.17], '#d8ae5c', 0);
+    k.cylinder([x, 2.65, 4], 0.11, 5.35, '#a07850');
+    k.glow([x, 5.4, 4], [0.17, 0.17, 0.17], '#d8ae5c', 0);
   }
-  k.sign([0, 4.24, 4.02], 11.4, 0.82, ['THE GRAND SNAIL PRIX'], '#4b6262', '#e5c888');
-  k.sign([5.65, 1.0, 0.1], 1.65, 1.05, ['TOP SPEED', 'eventually'], '#59624e', '#e4d5ad', [0, -0.3, 0]);
-  k.box([5.65, 0.4, 0], [0.08, 0.85, 0.12], '#9e8058');
+  k.sign([0, 5.14, 4.02], 11.4, 0.82, ['THE GRAND SNAIL PRIX'], '#4b6262', '#e5c888');
+  for (let i = 0; i < 9; i++) {
+    k.add(new THREE.SphereGeometry(1, 28, 12), i % 2 ? '#8da17b' : '#9eae85', [-44 + i * 11, -1.6, -28 - i % 3 * 4], [15, 5.5 + i % 3, 9], [0, 0, 0], 0.18, 0.12, 0, 'Garden beyond the track');
+  }
+  k.sign([6.6, 1.0, 0.1], 1.65, 1.05, ['TOP SPEED', 'eventually'], '#59624e', '#e4d5ad', [0, -0.3, 0]);
+  k.box([6.6, 0.4, 0], [0.08, 0.85, 0.12], '#9e8058');
   // A macro garden: mushrooms and little spectators dwarf the competitors.
   for (let i = 0; i < 14; i++) {
     const x = (i % 2 ? -1 : 1) * (6.7 + random() * 3.4), z = 2.5 - random() * 16, h = 0.9 + random() * 1.4;

@@ -1199,6 +1199,9 @@ function activateScene(id: SceneId, immediate = false): void {
   outlineColorsManuallyOverridden = false;
   disposeSceneContent();
   currentScene = nextScene;
+  const sceneUrl = new URL(window.location.href);
+  sceneUrl.searchParams.set('scene', nextScene.id);
+  window.history.replaceState(null, '', sceneUrl);
   currentPreset = nextScene.preferredPreset ?? REFERENCE_LOOK_ID;
   applySceneControlDefaults(nextScene);
   const buildContext = {
@@ -1286,7 +1289,6 @@ function disposeSceneContent(): void {
   outlineGroupIds.clear();
   sceneFrameUpdaters.length = 0;
   hoveredMesh = null;
-  delete sceneContentRoot.userData.cc0Man;
 }
 
 function createSky(uniforms: typeof skyUniforms): THREE.Mesh {
@@ -1892,7 +1894,8 @@ function updateObjectLabel(): void {
     label.classList.add('is-object', 'is-selected');
     return;
   }
-  label.textContent = hoveredMesh?.userData.paintLabel
+  const hoveredLabel = hoveredMesh?.userData.paintLabel;
+  label.textContent = (hoveredLabel === 'Painted details' ? null : hoveredLabel)
     ?? 'Drag to orbit · right drag to pan · scroll to explore';
   label.classList.toggle('is-object', Boolean(hoveredMesh));
   label.classList.remove('is-selected');

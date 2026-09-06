@@ -15,7 +15,7 @@ export const colors = (color: string) => ({
 });
 
 /** World-sized pieces are compiled by pigment, preserving individual hard
- * normals and UV islands. This keeps complete little worlds under ~65 draws. */
+ * normals and UV islands. Draw counts scale with pigments, not prop count. */
 export class GalleryKit {
   private frameMatrix = new THREE.Matrix4();
   private batches = new Map<string, { pieces: THREE.BufferGeometry[]; color: string; scale: number; contrast: number; glow: number; label: string }>();
@@ -33,8 +33,8 @@ export class GalleryKit {
     if (!batch) { batch = { pieces: [], color, scale: brushScale, contrast, glow, label }; this.batches.set(key, batch); }
     batch.pieces.push(g);
   }
-  box(p: P, size: P, color: string, rotation: P = [0, 0, 0], soft = 0) {
-    this.add(soft ? new RoundedBoxGeometry(...size, 2, soft) : new THREE.BoxGeometry(...size), color, p, [1, 1, 1], rotation);
+  box(p: P, size: P, color: string, rotation: P = [0, 0, 0], soft = 0, contrast = 0.55) {
+    this.add(soft ? new RoundedBoxGeometry(...size, 2, soft) : new THREE.BoxGeometry(...size), color, p, [1, 1, 1], rotation, contrast);
   }
   ball(p: P, size: P, color: string, rotation: P = [0, 0, 0]) {
     this.add(new THREE.SphereGeometry(1, 20, 12), color, p, size, rotation);
