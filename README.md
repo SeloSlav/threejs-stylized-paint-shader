@@ -4,16 +4,19 @@ Six little worlds made of brushstrokes, built with **Three.js 0.185.1**.
 An interactive port and extension of Gabriel de Laubier’s
 [Stylized Paint Shader Breakdown](https://cyn-prod.com/stylized-paint-shader-breakdown).
 
+**[Play with the live demo](https://seloslav.github.io/threejs-stylized-paint-shader/)** —
+explore all six paintings and experiment with the palette in your browser.
+
 ## The collection
 
 | Painting | The story | Direct link |
 | --- | --- | --- |
-| 01 / The long way home | Cypresses, poppies, a farmhouse, and a winding Provençal path. | `?scene=provence` |
-| 02 / A little sunshine | Sunflowers, ultramarine pottery, lemons, and linen. | `?scene=still-life` |
-| 03 / One more espresso | Golden café windows in a blue night. The last customer is a cat. | `?scene=night-cafe` |
-| 04 / The admiral’s day off | A rubber-duck captain commands a claw-foot bathtub fleet. | `?scene=duck-admiral` |
-| 05 / The crumb committee | Three pigeons hold a rooftop board meeting over one croissant. | `?scene=pigeon-meeting` |
-| 06 / The grand snail prix | A garden race with a maximum speed of “eventually.” | `?scene=snail-race` |
+| 01 / The long way home | Cypresses, poppies, a farmhouse, and a winding Provençal path. | [Explore](https://seloslav.github.io/threejs-stylized-paint-shader/?scene=provence) |
+| 02 / A little sunshine | Sunflowers, ultramarine pottery, lemons, and linen. | [Explore](https://seloslav.github.io/threejs-stylized-paint-shader/?scene=still-life) |
+| 03 / One more espresso | Golden café windows in a blue night. The last customer is a cat. | [Explore](https://seloslav.github.io/threejs-stylized-paint-shader/?scene=night-cafe) |
+| 04 / The admiral’s day off | A rubber-duck captain commands a claw-foot bathtub fleet. | [Explore](https://seloslav.github.io/threejs-stylized-paint-shader/?scene=duck-admiral) |
+| 05 / The crumb committee | Three pigeons hold a rooftop board meeting over one croissant. | [Explore](https://seloslav.github.io/threejs-stylized-paint-shader/?scene=pigeon-meeting) |
+| 06 / The grand snail prix | A garden race with a maximum speed of “eventually.” | [Explore](https://seloslav.github.io/threejs-stylized-paint-shader/?scene=snail-race) |
 
 The previous material, texture, tree, residence, and character studies have been
 removed, along with their model/texture downloads and the SeedThree dependency.
@@ -39,6 +42,12 @@ corepack pnpm run test:brushwork
 ```
 
 The development gallery runs at `http://127.0.0.1:5174`.
+
+The live demo is published to GitHub Pages by
+[Deploy demo to GitHub Pages](.github/workflows/deploy-pages.yml) on every push to
+`main`. The workflow installs the locked dependencies, runs the paint and
+brushwork checks, builds the app, and deploys `dist/`. It can also be run manually
+from the repository’s Actions tab.
 
 ## Explore and paint
 
